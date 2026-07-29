@@ -1,704 +1,788 @@
-import React, { useState, useEffect, useRef } from "react";
-import { RotateCcw, X, ClipboardList, BarChart3 } from "lucide-react";
-
-const INK = "#262421";
-const PAPER = "#E9E4D8";
-const PINE = "#2F5233";
-const PINE_DARK = "#1F3A24";
-const BRONZE = "#B07A3E";
-const GOOD = "#3C7A4B";
-const BAD = "#A23B32";
+import React, { useState, useEffect } from "react";
 
 const FORMATS = {
-  triplet: { label: "Триплет", own: 3, opp: 3, balls: 2 },
-  doublet: { label: "Дуплет", own: 2, opp: 2, balls: 3 },
-  tete: { label: "Тет-а-тет", own: 1, opp: 1, balls: 6 },
+  triplet: { label: "Триплет", count: 3, bowlsPerPlayer: 2 },
+  doublet: { label: "Дуплет", count: 2, bowlsPerPlayer: 3 },
+  tetaTet: { label: "Тет-а-тет", count: 1, bowlsPerPlayer: 3 },
 };
 
-const STORAGE_KEY = "petanque_match_v1";
+export default function PetanqueTracker() {
+  const [activeTab, setActiveTab] = useState("setup"); // 'setup' | 'game' | 'stats' | 'history'
 
-function todayISO() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10);
-}
+  // Настройки партии (Игровые данные)
+  const [setupData, setSetupData] = useState({
+    date: new Date().toISOString().split("T")[0],
+    event: "",
+    team1: "Команда 1",
+    team2: "Команда 2",
+    format: "doublet",
+  });
 
-function emptyMatch(format) {
-  const cfg = FORMATS[format];
-  return {
-    format,
-    date: todayISO(),
-    tournament: "",
-    opponentTeam: "",
-    ownPlayers: Array(cfg.own).fill(""),
-    oppPlayers: Array(cfg.opp).fill(""),
-  };
-}
+  // Состояние активной партии
+  const [partyState, setPartyState] = useState({
+    geym: 1,
+    team1Score: 0,
+    team2Score: 0,
+    distance: 6.0,
+    activeTeam: "team1",
+  });
 
-function calcStats(throws, playerName) {
-  const rows = throws.filter((t) => t.player === playerName);
-  const tirs = rows.filter((t) => t.type === "tir");
-  const points = rows.filter((t) => t.type === "point");
-  const tirSuccess = tirs.filter((t) => t.result === "hit" || t.result === "carreau").length;
-  const carreau = tirs.filter((t) => t.result === "carreau").length;
-  const pointSuccess = points.filter((t) => t.result === "success").length;
-  const firstPoints = rows.filter((t) => t.firstPoint);
-  const firstPointSuccess = firstPoints.filter((t) => t.result === "success").length;
-
-  return {
-    tirTotal: tirs.length,
-    tirSuccess,
-    carreau,
-    pointTotal: points.length,
-    pointSuccess,
-    firstPointTotal: firstPoints.length,
-    firstPointSuccess,
-  };
-}
-
-function pct(n, d) {
-  if (!d) return "—";
-  return Math.round((n / d) * 100) + "%";
-}
-
-function Badge({ children, tone }) {
-  const bg = tone === "good" ? GOOD : tone === "bad" ? BAD : "#6b6355";
-  return (
-    <span
-      className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold text-white"
-      style={{ backgroundColor: bg }}
-    >
-      {children}
-    </span>
-  );
-}
-
-export default function App() {
-  const [match, setMatch] = useState(null);
-  const [gameState, setGameState] = useState({ mene: 1, ourScore: 0, theirScore: 0, distance: "" });
   const [throws, setThrows] = useState([]);
-  const [loaded, setLoaded] = useState(false);
-  const [tab, setTab] = useState("log");
-  const [setupFormat, setSetupFormat] = useState("triplet");
-  const [setupDraft, setSetupDraft] = useState(emptyMatch("triplet"));
-  const [selTeam, setSelTeam] = useState(null);
-  const [selPlayer, setSelPlayer] = useState(null);
-  const [selType, setSelType] = useState(null);
-  const [flash, setFlash] = useState(null);
-  const [confirmReset, setConfirmReset] = useState(false);
-  const saveTimer = useRef(null);
+  const [history, setHistory] = useState([]);
+  const [selectedHistoryParty, setSelectedHistoryParty] = useState(null);
+  const [showEndGeymModal, setShowEndGeymModal] = useState(false);
+  const [geymPoints, setGeymPoints] = useState({ team1: 0, team2: 0 });
+  const [copied, setCopied] = useState(false);
 
+  // Загрузка сохраненных данных из localStorage
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.match) setMatch(data.match);
-        if (data.gameState) setGameState(data.gameState);
-        if (data.throws) setThrows(data.throws);
+    const savedHistory = localStorage.getItem("petanque_history");
+    if (savedHistory) {
+      try {
+        setHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Ошибка загрузки истории", e);
       }
-    } catch (e) {
-      console.error("Ошибка загрузки данных", e);
     }
-    setLoaded(true);
   }, []);
 
-  const persist = (nextMatch, nextGameState, nextThrows) => {
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify({ match: nextMatch, gameState: nextGameState, throws: nextThrows })
-        );
-      } catch (e) {
-        console.error("Ошибка сохранения", e);
+  const saveHistoryToStorage = (updatedHistory) => {
+    setHistory(updatedHistory);
+    localStorage.setItem("petanque_history", JSON.stringify(updatedHistory));
+  };
+
+  // Смена формата без сброса полей события, даты и команд
+  const handleFormatChange = (key) => {
+    setSetupData((prev) => ({
+      ...prev,
+      format: key,
+    }));
+  };
+
+  // Фиксация броска (Пойнт, Тир, Каро)
+  const addThrow = (type, result) => {
+    const newThrow = {
+      id: Date.now(),
+      geym: partyState.geym,
+      team: partyState.activeTeam,
+      teamName: partyState.activeTeam === "team1" ? (setupData.team1 || "Команда 1") : (setupData.team2 || "Команда 2"),
+      type, // 'point' | 'tir'
+      result, // 'success' | 'miss' | 'carreau'
+      distance: parseFloat(partyState.distance) || 6.0,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    };
+    setThrows((prev) => [...prev, newThrow]);
+  };
+
+  const undoLastThrow = () => {
+    setThrows((prev) => prev.slice(0, -1));
+  };
+
+  // Завершение и сохранение партии
+  const finishParty = (finalScore1 = partyState.team1Score, finalScore2 = partyState.team2Score) => {
+    const completedParty = {
+      id: Date.now(),
+      date: setupData.date,
+      event: setupData.event || "Товарищеская партия",
+      format: FORMATS[setupData.format]?.label || "Дуплет",
+      team1: setupData.team1 || "Команда 1",
+      team2: setupData.team2 || "Команда 2",
+      score1: finalScore1,
+      score2: finalScore2,
+      throws: [...throws],
+    };
+
+    const newHistory = [completedParty, ...history];
+    saveHistoryToStorage(newHistory);
+    alert("Партия успешно сохранена в Историю!");
+    setActiveTab("history");
+  };
+
+  // Завершение гейма и запись счета
+  const handleFinishGeym = () => {
+    const add1 = Number(geymPoints.team1) || 0;
+    const add2 = Number(geymPoints.team2) || 0;
+    const newScore1 = partyState.team1Score + add1;
+    const newScore2 = partyState.team2Score + add2;
+
+    setPartyState((prev) => ({
+      ...prev,
+      team1Score: newScore1,
+      team2Score: newScore2,
+      geym: prev.geym + 1,
+    }));
+
+    setShowEndGeymModal(false);
+    setGeymPoints({ team1: 0, team2: 0 });
+
+    if (newScore1 >= 13 || newScore2 >= 13) {
+      if (window.confirm("Одна из команд набрала 13 очков. Завершить партию?")) {
+        finishParty(newScore1, newScore2);
       }
-    }, 150);
+    }
   };
 
-  const startMatch = () => {
-    const cleaned = {
-      ...setupDraft,
-      ownPlayers: setupDraft.ownPlayers.map((p, i) => p.trim() || `Игрок ${i + 1}`),
-      oppPlayers: setupDraft.oppPlayers.map((p, i) => p.trim() || `Соперник ${i + 1}`),
+  // Расчет подробной статистики (включая КАРО)
+  const calculateStats = (targetThrows = throws) => {
+    const points = targetThrows.filter((t) => t.type === "point");
+    const tirs = targetThrows.filter((t) => t.type === "tir");
+
+    const pointSuccess = points.filter((t) => t.result === "success").length;
+    const tirHits = tirs.filter((t) => t.result === "success" || t.result === "carreau").length;
+    const carreauHits = tirs.filter((t) => t.result === "carreau").length;
+
+    const calcGroup = (pList, tList) => {
+      const pTotal = pList.length;
+      const pSucc = pList.filter((t) => t.result === "success").length;
+      const pPct = pTotal > 0 ? Math.round((pSucc / pTotal) * 100) : 0;
+
+      const tTotal = tList.length;
+      const tHits = tList.filter((t) => t.result === "success" || t.result === "carreau").length;
+      const tPct = tTotal > 0 ? Math.round((tHits / tTotal) * 100) : 0;
+
+      const cHits = tList.filter((t) => t.result === "carreau").length;
+
+      return { pTotal, pSucc, pPct, tTotal, tHits, tPct, cHits };
     };
-    const gs = { mene: 1, ourScore: 0, theirScore: 0, distance: "" };
-    setMatch(cleaned);
-    setGameState(gs);
-    setThrows([]);
-    persist(cleaned, gs, []);
-  };
 
-  const updateGameState = (patch) => {
-    const next = { ...gameState, ...patch };
-    setGameState(next);
-    persist(match, next, throws);
-  };
+    // Группировка по дистанциям
+    const d1 = targetThrows.filter((t) => t.distance >= 6.0 && t.distance <= 7.5);
+    const d2 = targetThrows.filter((t) => t.distance > 7.5 && t.distance <= 8.5);
+    const d3 = targetThrows.filter((t) => t.distance > 8.5 && t.distance <= 10.0);
 
-  const logThrow = (result) => {
-    if (!selTeam || !selPlayer || !selType) return;
-    const isFirst = throws.filter((t) => t.mene === gameState.mene).length === 0;
-    const entry = {
-      id: Date.now() + Math.random(),
-      mene: gameState.mene,
-      ourScore: gameState.ourScore,
-      theirScore: gameState.theirScore,
-      distance: gameState.distance,
-      team: selTeam,
-      player: selPlayer,
-      type: selType,
-      result,
-      firstPoint: isFirst,
+    return {
+      totalThrows: targetThrows.length,
+      point: {
+        total: points.length,
+        success: pointSuccess,
+        percent: points.length > 0 ? Math.round((pointSuccess / points.length) * 100) : 0,
+      },
+      tir: {
+        total: tirs.length,
+        hits: tirHits,
+        percent: tirs.length > 0 ? Math.round((tirHits / tirs.length) * 100) : 0,
+      },
+      carreau: {
+        count: carreauHits,
+        percent: tirs.length > 0 ? Math.round((carreauHits / tirs.length) * 100) : 0,
+      },
+      byDistance: {
+        range1: {
+          label: "6.0 – 7.5 м",
+          stats: calcGroup(
+            d1.filter((t) => t.type === "point"),
+            d1.filter((t) => t.type === "tir")
+          ),
+        },
+        range2: {
+          label: "7.5 – 8.5 м",
+          stats: calcGroup(
+            d2.filter((t) => t.type === "point"),
+            d2.filter((t) => t.type === "tir")
+          ),
+        },
+        range3: {
+          label: "8.5 – 10.0 м",
+          stats: calcGroup(
+            d3.filter((t) => t.type === "point"),
+            d3.filter((t) => t.type === "tir")
+          ),
+        },
+      },
     };
-    const next = [...throws, entry];
-    setThrows(next);
-    persist(match, gameState, next);
-    setSelType(null);
-    setFlash(entry);
-    setTimeout(() => setFlash(null), 900);
   };
 
-  const undoLast = () => {
-    const next = throws.slice(0, -1);
-    setThrows(next);
-    persist(match, gameState, next);
+  const currentStats = calculateStats(throws);
+
+  // Формирование сообщения для отправки в мессенджеры
+  const copyStatsToClipboard = (partyInfo, targetThrows) => {
+    const st = calculateStats(targetThrows);
+    const formatLabel = partyInfo.format || FORMATS[setupData.format]?.label || "Формат";
+    const text = `
+🏆 *${partyInfo.event || "Петанк партия"}* (${formatLabel})
+📅 *Дата:* ${partyInfo.date || setupData.date}
+⚔️ *Счёт:* ${partyInfo.team1 || setupData.team1} [${partyInfo.score1 ?? partyState.team1Score} : ${partyInfo.score2 ?? partyState.team2Score}] ${partyInfo.team2 || setupData.team2}
+
+📊 *Обзор статистики:*
+• Всего бросков: ${st.totalThrows}
+• Пойнт: ${st.point.percent}% (${st.point.success}/${st.point.total})
+• Тир: ${st.tir.percent}% (${st.tir.hits}/${st.tir.total})
+• Каро (Carreau): ${st.carreau.percent}% (${st.carreau.count} шт.)
+
+📏 *По дистанциям (Пойнт % / Тир % / Каро шт):*
+• 6.0–7.5м: P ${st.byDistance.range1.stats.pPct}% | T ${st.byDistance.range1.stats.tPct}% | C ${st.byDistance.range1.stats.cHits}
+• 7.5–8.5м: P ${st.byDistance.range2.stats.pPct}% | T ${st.byDistance.range2.stats.tPct}% | C ${st.byDistance.range2.stats.cHits}
+• 8.5–10.0м: P ${st.byDistance.range3.stats.pPct}% | T ${st.byDistance.range3.stats.tPct}% | C ${st.byDistance.range3.stats.cHits}
+    `.trim();
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(() => fallbackCopyText(text));
+    } else {
+      fallbackCopyText(text);
+    }
   };
 
-  const deleteThrow = (id) => {
-    const next = throws.filter((t) => t.id !== id);
-    setThrows(next);
-    persist(match, gameState, next);
+  const fallbackCopyText = (text) => {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Не удалось скопировать", err);
+    }
+    document.body.removeChild(textarea);
   };
-
-  const resetMatch = () => {
-    setMatch(null);
-    setThrows([]);
-    setGameState({ mene: 1, ourScore: 0, theirScore: 0, distance: "" });
-    setSetupDraft(emptyMatch("triplet"));
-    setSetupFormat("triplet");
-    persist(null, { mene: 1, ourScore: 0, theirScore: 0, distance: "" }, []);
-    setConfirmReset(false);
-    setTab("log");
-  };
-
-  if (!loaded) {
-    return (
-      <div style={{ backgroundColor: PAPER, minHeight: "100vh" }} className="flex items-center justify-center">
-        <div style={{ color: INK }} className="text-sm tracking-wide">
-          загрузка…
-        </div>
-      </div>
-    );
-  }
-
-  if (!match) {
-    const cfg = FORMATS[setupFormat];
-    return (
-      <div style={{ backgroundColor: PAPER, minHeight: "100vh", color: INK }} className="pb-10">
-        <div className="max-w-md mx-auto px-5 pt-8">
-          <div className="mb-1 text-[11px] tracking-[0.2em] uppercase" style={{ color: BRONZE }}>
-            Новый матч
-          </div>
-          <h1 className="text-2xl font-black mb-6" style={{ letterSpacing: "-0.02em" }}>
-            Лист учёта — петанк
-          </h1>
-
-          <div className="mb-5">
-            <div className="text-xs font-semibold uppercase tracking-wide mb-2 opacity-70">Формат игры</div>
-            <div className="grid grid-cols-3 gap-2">
-              {Object.entries(FORMATS).map(([key, f]) => (
-                <button
-                  key={key}
-                  onClick={() => {
-                    setSetupFormat(key);
-                    setSetupDraft(emptyMatch(key));
-                  }}
-                  className="py-2.5 rounded-md text-sm font-bold border-2 transition"
-                  style={{
-                    borderColor: setupFormat === key ? PINE : "#c9c2b0",
-                    backgroundColor: setupFormat === key ? PINE : "transparent",
-                    color: setupFormat === key ? "white" : INK,
-                  }}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 mb-5">
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide opacity-70">Дата</label>
-              <input
-                type="date"
-                value={setupDraft.date}
-                onChange={(e) => setSetupDraft({ ...setupDraft, date: e.target.value })}
-                className="w-full mt-1 px-2 py-2 rounded-md border-2 bg-white text-sm"
-                style={{ borderColor: "#c9c2b0" }}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-semibold uppercase tracking-wide opacity-70">Турнир</label>
-              <input
-                value={setupDraft.tournament}
-                onChange={(e) => setSetupDraft({ ...setupDraft, tournament: e.target.value })}
-                placeholder="Кубок города"
-                className="w-full mt-1 px-2 py-2 rounded-md border-2 bg-white text-sm"
-                style={{ borderColor: "#c9c2b0" }}
-              />
-            </div>
-          </div>
-
-          <div className="mb-5">
-            <label className="text-xs font-semibold uppercase tracking-wide opacity-70">Команда соперника</label>
-            <input
-              value={setupDraft.opponentTeam}
-              onChange={(e) => setSetupDraft({ ...setupDraft, opponentTeam: e.target.value })}
-              placeholder="Название команды"
-              className="w-full mt-1 px-2 py-2 rounded-md border-2 bg-white text-sm"
-              style={{ borderColor: "#c9c2b0" }}
-            />
-          </div>
-
-          <div className="mb-5">
-            <div className="text-xs font-semibold uppercase tracking-wide mb-2 opacity-70">
-              Наши игроки ({cfg.own})
-            </div>
-            <div className="space-y-2">
-              {setupDraft.ownPlayers.map((p, i) => (
-                <input
-                  key={i}
-                  value={p}
-                  onChange={(e) => {
-                    const arr = [...setupDraft.ownPlayers];
-                    arr[i] = e.target.value;
-                    setSetupDraft({ ...setupDraft, ownPlayers: arr });
-                  }}
-                  placeholder={`Игрок ${i + 1}`}
-                  className="w-full px-3 py-2 rounded-md border-2 bg-white text-sm"
-                  style={{ borderColor: "#c9c2b0" }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <div className="mb-8">
-            <div className="text-xs font-semibold uppercase tracking-wide mb-2 opacity-70">
-              Игроки соперника ({cfg.opp})
-            </div>
-            <div className="space-y-2">
-              {setupDraft.oppPlayers.map((p, i) => (
-                <input
-                  key={i}
-                  value={p}
-                  onChange={(e) => {
-                    const arr = [...setupDraft.oppPlayers];
-                    arr[i] = e.target.value;
-                    setSetupDraft({ ...setupDraft, oppPlayers: arr });
-                  }}
-                  placeholder={`Соперник ${i + 1}`}
-                  className="w-full px-3 py-2 rounded-md border-2 bg-white text-sm"
-                  style={{ borderColor: "#c9c2b0" }}
-                />
-              ))}
-            </div>
-          </div>
-
-          <button
-            onClick={startMatch}
-            className="w-full py-3 rounded-md font-bold text-white text-sm tracking-wide"
-            style={{ backgroundColor: PINE }}
-          >
-            Начать матч
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const cfg = FORMATS[match.format];
-  const teamPlayers = selTeam === "own" ? match.ownPlayers : selTeam === "opp" ? match.oppPlayers : [];
 
   return (
-    <div style={{ backgroundColor: PAPER, minHeight: "100vh", color: INK }} className="pb-24">
-      <div className="max-w-md mx-auto px-4 pt-5">
-        <div className="flex items-baseline justify-between mb-4">
-          <div>
-            <div className="text-[11px] tracking-[0.2em] uppercase" style={{ color: BRONZE }}>
-              {cfg.label} · {match.opponentTeam || "соперник"}
-            </div>
-            <h1 className="text-xl font-black" style={{ letterSpacing: "-0.02em" }}>
-              Учёт матча
-            </h1>
-          </div>
+    <div className="min-h-screen bg-[#FDFBF7] text-[#2C221E] font-sans flex flex-col justify-between max-w-md mx-auto p-4 border-x border-[#E6DCCF]">
+      <div>
+        {/* Навигация по вкладкам */}
+        <nav className="flex bg-[#F5EFE6] p-1 rounded-xl mb-4 border border-[#E6DCCF] text-xs font-semibold">
           <button
-            onClick={() => setConfirmReset(true)}
-            className="text-[11px] uppercase tracking-wide opacity-60 underline"
+            onClick={() => setActiveTab("setup")}
+            className={`flex-1 py-2 text-center rounded-lg transition-all ${
+              activeTab === "setup" ? "bg-[#6E473B] text-white shadow-sm" : "text-[#6E5D4F]"
+            }`}
           >
-            новый матч
+            Игровые данные
           </button>
-        </div>
+          <button
+            onClick={() => setActiveTab("game")}
+            className={`flex-1 py-2 text-center rounded-lg transition-all ${
+              activeTab === "game" ? "bg-[#6E473B] text-white shadow-sm" : "text-[#6E5D4F]"
+            }`}
+          >
+            Партия
+          </button>
+          <button
+            onClick={() => setActiveTab("stats")}
+            className={`flex-1 py-2 text-center rounded-lg transition-all ${
+              activeTab === "stats" ? "bg-[#6E473B] text-white shadow-sm" : "text-[#6E5D4F]"
+            }`}
+          >
+            Обзор
+          </button>
+          <button
+            onClick={() => setActiveTab("history")}
+            className={`flex-1 py-2 text-center rounded-lg transition-all ${
+              activeTab === "history" ? "bg-[#6E473B] text-white shadow-sm" : "text-[#6E5D4F]"
+            }`}
+          >
+            История
+          </button>
+        </nav>
 
-        {confirmReset && (
-          <div className="mb-4 p-3 rounded-md border-2 text-sm" style={{ borderColor: BAD, backgroundColor: "#fbe9e7" }}>
-            <div className="font-semibold mb-2">Стереть текущий матч и начать новый?</div>
-            <div className="flex gap-2">
-              <button onClick={resetMatch} className="px-3 py-1.5 rounded text-white text-xs font-bold" style={{ backgroundColor: BAD }}>
-                Да, стереть
-              </button>
-              <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 rounded text-xs font-bold border-2" style={{ borderColor: "#c9c2b0" }}>
-                Отмена
-              </button>
-            </div>
-          </div>
-        )}
+        {/* 1. ИГРОВЫЕ ДАННЫЕ (НАСТРОЙКА) */}
+        {activeTab === "setup" && (
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-xl border border-[#E6DCCF] shadow-sm space-y-3">
+              <h2 className="text-sm font-bold text-[#4A3228] border-b pb-2 border-[#E6DCCF]">
+                Параметры партии
+              </h2>
 
-        {tab === "log" && (
-          <>
-            <div className="rounded-lg border-2 p-3 mb-4 bg-white" style={{ borderColor: "#c9c2b0" }}>
-              <div className="grid grid-cols-3 gap-2 mb-2">
+              <div>
+                <label className="block text-xs font-medium text-[#6E5D4F]">Событие</label>
+                <input
+                  type="text"
+                  value={setupData.event}
+                  onChange={(e) => setSetupData({ ...setupData, event: e.target.value })}
+                  placeholder="Кубок города"
+                  className="w-full text-sm mt-1 p-2 border border-[#D9C8B4] rounded-lg focus:outline-none focus:border-[#6E473B]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-[#6E5D4F]">Дата</label>
+                <input
+                  type="date"
+                  value={setupData.date}
+                  onChange={(e) => setSetupData({ ...setupData, date: e.target.value })}
+                  className="w-full text-sm mt-1 p-2 border border-[#D9C8B4] rounded-lg focus:outline-none focus:border-[#6E473B]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide opacity-60">Мена</div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <input
-                      type="number"
-                      value={gameState.mene}
-                      onChange={(e) => updateGameState({ mene: parseInt(e.target.value) || 1 })}
-                      className="w-full px-1.5 py-1 rounded border text-sm font-bold text-center"
-                      style={{ borderColor: "#c9c2b0" }}
-                    />
-                    <button
-                      onClick={() => updateGameState({ mene: gameState.mene + 1 })}
-                      className="px-2 py-1 rounded text-white text-xs font-bold shrink-0"
-                      style={{ backgroundColor: PINE }}
-                    >
-                      +1
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide opacity-60">Счёт наш:их</div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <input
-                      type="number"
-                      value={gameState.ourScore}
-                      onChange={(e) => updateGameState({ ourScore: parseInt(e.target.value) || 0 })}
-                      className="w-full px-1 py-1 rounded border text-sm font-bold text-center"
-                      style={{ borderColor: "#c9c2b0" }}
-                    />
-                    <span className="opacity-50 text-xs">:</span>
-                    <input
-                      type="number"
-                      value={gameState.theirScore}
-                      onChange={(e) => updateGameState({ theirScore: parseInt(e.target.value) || 0 })}
-                      className="w-full px-1 py-1 rounded border text-sm font-bold text-center"
-                      style={{ borderColor: "#c9c2b0" }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide opacity-60">Дистанция</div>
+                  <label className="block text-xs font-medium text-[#6E5D4F]">Команда 1</label>
                   <input
-                    value={gameState.distance}
-                    onChange={(e) => updateGameState({ distance: e.target.value })}
-                    placeholder="м"
-                    className="w-full mt-0.5 px-1.5 py-1 rounded border text-sm font-bold text-center"
-                    style={{ borderColor: "#c9c2b0" }}
+                    type="text"
+                    value={setupData.team1}
+                    onChange={(e) => setSetupData({ ...setupData, team1: e.target.value })}
+                    className="w-full text-sm mt-1 p-2 border border-[#D9C8B4] rounded-lg focus:outline-none focus:border-[#6E473B]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#6E5D4F]">Команда 2</label>
+                  <input
+                    type="text"
+                    value={setupData.team2}
+                    onChange={(e) => setSetupData({ ...setupData, team2: e.target.value })}
+                    className="w-full text-sm mt-1 p-2 border border-[#D9C8B4] rounded-lg focus:outline-none focus:border-[#6E473B]"
                   />
                 </div>
               </div>
-            </div>
 
-            <div className="mb-3">
-              <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">1. Команда</div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => {
-                    setSelTeam("own");
-                    setSelPlayer(null);
-                    setSelType(null);
-                  }}
-                  className="py-2.5 rounded-md font-bold text-sm border-2"
-                  style={{
-                    borderColor: selTeam === "own" ? PINE : "#c9c2b0",
-                    backgroundColor: selTeam === "own" ? PINE : "white",
-                    color: selTeam === "own" ? "white" : INK,
-                  }}
-                >
-                  Наши
-                </button>
-                <button
-                  onClick={() => {
-                    setSelTeam("opp");
-                    setSelPlayer(null);
-                    setSelType(null);
-                  }}
-                  className="py-2.5 rounded-md font-bold text-sm border-2"
-                  style={{
-                    borderColor: selTeam === "opp" ? BRONZE : "#c9c2b0",
-                    backgroundColor: selTeam === "opp" ? BRONZE : "white",
-                    color: selTeam === "opp" ? "white" : INK,
-                  }}
-                >
-                  Соперник
-                </button>
-              </div>
-            </div>
-
-            {selTeam && (
-              <div className="mb-3">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">2. Игрок</div>
-                <div className="grid grid-cols-1 gap-2">
-                  {teamPlayers.map((p) => (
+              <div>
+                <label className="block text-xs font-medium text-[#6E5D4F] mb-1">
+                  Формат партии
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.entries(FORMATS).map(([key, f]) => (
                     <button
-                      key={p}
-                      onClick={() => {
-                        setSelPlayer(p);
-                        setSelType(null);
-                      }}
-                      className="py-2.5 px-3 rounded-md font-semibold text-sm border-2 text-left"
-                      style={{
-                        borderColor: selPlayer === p ? PINE_DARK : "#c9c2b0",
-                        backgroundColor: selPlayer === p ? "#dfe6df" : "white",
-                        color: INK,
-                      }}
+                      key={key}
+                      type="button"
+                      onClick={() => handleFormatChange(key)}
+                      className={`py-2 text-xs font-medium rounded-lg transition-all ${
+                        setupData.format === key
+                          ? "bg-[#6E473B] text-white shadow-sm"
+                          : "bg-[#F5EFE6] text-[#524338] border border-[#D9C8B4]"
+                      }`}
                     >
-                      {p}
+                      {f.label}
                     </button>
                   ))}
                 </div>
               </div>
-            )}
-
-            {selPlayer && (
-              <div className="mb-3">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">3. Тип броска</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setSelType("point")}
-                    className="py-2.5 rounded-md font-bold text-sm border-2"
-                    style={{
-                      borderColor: selType === "point" ? PINE : "#c9c2b0",
-                      backgroundColor: selType === "point" ? PINE : "white",
-                      color: selType === "point" ? "white" : INK,
-                    }}
-                  >
-                    Пойнт
-                  </button>
-                  <button
-                    onClick={() => setSelType("tir")}
-                    className="py-2.5 rounded-md font-bold text-sm border-2"
-                    style={{
-                      borderColor: selType === "tir" ? PINE : "#c9c2b0",
-                      backgroundColor: selType === "tir" ? PINE : "white",
-                      color: selType === "tir" ? "white" : INK,
-                    }}
-                  >
-                    Тир
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {selType === "point" && (
-              <div className="mb-4">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">4. Результат</div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => logThrow("success")}
-                    className="py-4 rounded-md font-bold text-white text-sm"
-                    style={{ backgroundColor: GOOD }}
-                  >
-                    Успех
-                  </button>
-                  <button
-                    onClick={() => logThrow("fail")}
-                    className="py-4 rounded-md font-bold text-white text-sm"
-                    style={{ backgroundColor: BAD }}
-                  >
-                    Неуспех
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {selType === "tir" && (
-              <div className="mb-4">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">4. Результат</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    onClick={() => logThrow("miss")}
-                    className="py-4 rounded-md font-bold text-white text-sm"
-                    style={{ backgroundColor: BAD }}
-                  >
-                    Промах
-                  </button>
-                  <button
-                    onClick={() => logThrow("hit")}
-                    className="py-4 rounded-md font-bold text-white text-sm"
-                    style={{ backgroundColor: "#7a8c3c" }}
-                  >
-                    Попадание
-                  </button>
-                  <button
-                    onClick={() => logThrow("carreau")}
-                    className="py-4 rounded-md font-bold text-white text-sm"
-                    style={{ backgroundColor: GOOD }}
-                  >
-                    Каро
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {flash && (
-              <div
-                className="fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-white text-sm font-bold shadow-lg z-50"
-                style={{ backgroundColor: PINE_DARK }}
-              >
-                записано: {flash.player} · {flash.type === "point" ? "пойнт" : "тир"}
-              </div>
-            )}
-
-            <div className="mt-6">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-semibold uppercase tracking-wide opacity-70">Последние броски</div>
-                {throws.length > 0 && (
-                  <button onClick={undoLast} className="flex items-center gap-1 text-xs font-semibold opacity-70">
-                    <RotateCcw size={13} /> отменить
-                  </button>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                {throws
-                  .slice(-6)
-                  .reverse()
-                  .map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center justify-between px-3 py-2 rounded-md bg-white border text-sm"
-                      style={{ borderColor: "#dcd6c8" }}
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="opacity-50 text-xs shrink-0">м{t.mene}</span>
-                        <span className="font-semibold truncate">{t.player}</span>
-                        <span className="opacity-60 text-xs shrink-0">{t.type === "point" ? "пойнт" : "тир"}</span>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {t.result === "success" || t.result === "hit" ? <Badge tone="good">+</Badge> : null}
-                        {t.result === "carreau" ? <Badge tone="good">++</Badge> : null}
-                        {t.result === "fail" || t.result === "miss" ? <Badge tone="bad">−</Badge> : null}
-                        <button onClick={() => deleteThrow(t.id)} className="opacity-40">
-                          <X size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                {throws.length === 0 && <div className="text-sm opacity-50 italic px-1">пока пусто</div>}
-              </div>
             </div>
-          </>
+
+            <button
+              onClick={() => setActiveTab("game")}
+              className="w-full py-3 bg-[#3B5E49] hover:bg-[#2D4838] text-white font-bold text-xs rounded-xl shadow transition-all"
+            >
+              Перейти к партии ➔
+            </button>
+          </div>
         )}
 
-        {tab === "stats" && (
-          <div>
-            <div className="text-center mb-5">
-              <div className="text-[11px] uppercase tracking-wide opacity-60">Счёт</div>
-              <div className="text-3xl font-black">
-                {gameState.ourScore} : {gameState.theirScore}
+        {/* 2. НАЧАТАЯ ПАРТИЯ */}
+        {activeTab === "game" && (
+          <div className="space-y-4">
+            {/* Табло партии */}
+            <div className="bg-[#4A3228] text-[#FDFBF7] p-4 rounded-xl shadow-md text-center space-y-1">
+              <div className="text-xs uppercase tracking-widest text-[#D9C8B4]">
+                {FORMATS[setupData.format]?.label || "Партия"} • {setupData.event || "Товарищеская"}
               </div>
-              <div className="text-xs opacity-60">мена {gameState.mene}</div>
+              <div className="flex justify-between items-center pt-2 px-2">
+                <div className="text-left flex-1">
+                  <div className="text-xs text-[#C4B2A3] truncate">{setupData.team1}</div>
+                  <div className="text-3xl font-black">{partyState.team1Score}</div>
+                </div>
+                <div className="px-3 border-x border-[#6E5D4F]">
+                  <div className="text-[10px] text-[#D9C8B4]">ГЕЙМ</div>
+                  <div className="text-xl font-bold">{partyState.geym}</div>
+                </div>
+                <div className="text-right flex-1">
+                  <div className="text-xs text-[#C4B2A3] truncate">{setupData.team2}</div>
+                  <div className="text-3xl font-black">{partyState.team2Score}</div>
+                </div>
+              </div>
             </div>
 
-            <StatsBlock title="Наша команда" players={match.ownPlayers} throws={throws} accent={PINE} />
-            <StatsBlock title="Соперники" players={match.oppPlayers} throws={throws} accent={BRONZE} />
+            {/* Изменение дистанции */}
+            <div className="bg-white p-3 rounded-xl border border-[#E6DCCF] flex justify-between items-center">
+              <div>
+                <label className="block text-xs font-semibold text-[#6E5D4F]">
+                  Дистанция до кошонета (м)
+                </label>
+                <span className="text-[10px] text-gray-400">
+                  (измените, если кошонет сдвинут)
+                </span>
+              </div>
+              <input
+                type="number"
+                step="0.1"
+                min="6"
+                max="10"
+                value={partyState.distance}
+                onChange={(e) => setPartyState({ ...partyState, distance: e.target.value })}
+                className="w-20 text-center font-bold text-sm p-1.5 border border-[#D9C8B4] rounded-lg focus:outline-none focus:border-[#6E473B]"
+              />
+            </div>
+
+            {/* Выбор активной команды */}
+            <div>
+              <label className="block text-xs font-semibold text-[#6E5D4F] mb-1">
+                Бросает команда
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setPartyState({ ...partyState, activeTeam: "team1" })}
+                  className={`py-2 px-2 text-xs font-bold rounded-lg truncate transition-all ${
+                    partyState.activeTeam === "team1"
+                      ? "bg-[#6E473B] text-white shadow-sm"
+                      : "bg-white text-[#524338] border border-[#D9C8B4]"
+                  }`}
+                >
+                  {setupData.team1}
+                </button>
+                <button
+                  onClick={() => setPartyState({ ...partyState, activeTeam: "team2" })}
+                  className={`py-2 px-2 text-xs font-bold rounded-lg truncate transition-all ${
+                    partyState.activeTeam === "team2"
+                      ? "bg-[#6E473B] text-white shadow-sm"
+                      : "bg-white text-[#524338] border border-[#D9C8B4]"
+                  }`}
+                >
+                  {setupData.team2}
+                </button>
+              </div>
+            </div>
+
+            {/* Кнопки ввода бросков */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => addThrow("point", "success")}
+                className="p-2.5 bg-[#E3EFE0] hover:bg-[#D2E4CE] text-[#2D5027] font-semibold text-xs rounded-xl border border-[#B3D3AA] text-center"
+              >
+                🎯 Успешный Пойнт
+              </button>
+              <button
+                onClick={() => addThrow("point", "miss")}
+                className="p-2.5 bg-[#FCE8E6] hover:bg-[#F9D4D1] text-[#7A2720] font-semibold text-xs rounded-xl border border-[#F1B5B0] text-center"
+              >
+                ❌ Промах Пойнт
+              </button>
+              <button
+                onClick={() => addThrow("tir", "carreau")}
+                className="col-span-2 p-2.5 bg-[#FEF3C7] hover:bg-[#FDE68A] text-[#92400E] font-bold text-xs rounded-xl border border-[#F59E0B] text-center shadow-sm"
+              >
+                💥 КАРО (Carreau)
+              </button>
+              <button
+                onClick={() => addThrow("tir", "success")}
+                className="p-2.5 bg-[#E3EFE0] hover:bg-[#D2E4CE] text-[#2D5027] font-semibold text-xs rounded-xl border border-[#B3D3AA] text-center"
+              >
+                🎯 Успешный Тир
+              </button>
+              <button
+                onClick={() => addThrow("tir", "miss")}
+                className="p-2.5 bg-[#FCE8E6] hover:bg-[#F9D4D1] text-[#7A2720] font-semibold text-xs rounded-xl border border-[#F1B5B0] text-center"
+              >
+                ❌ Промах Тир
+              </button>
+            </div>
+
+            {/* Управление геймом и партией */}
+            <div className="flex gap-2">
+              <button
+                onClick={undoLastThrow}
+                disabled={throws.length === 0}
+                className="px-3 py-2 text-xs bg-gray-200 hover:bg-gray-300 disabled:opacity-50 text-gray-700 rounded-lg font-medium"
+              >
+                ↩️ Отмена
+              </button>
+              <button
+                onClick={() => setShowEndGeymModal(true)}
+                className="flex-1 py-2 text-xs bg-[#6E473B] hover:bg-[#58382E] text-white rounded-lg font-bold shadow-sm"
+              >
+                🏁 Конец гейма
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm("Завершить партию досрочно и сохранить данные?")) {
+                    finishParty();
+                  }
+                }}
+                className="px-3 py-2 text-xs bg-red-800 hover:bg-red-900 text-white rounded-lg font-bold shadow-sm"
+              >
+                Конец партии
+              </button>
+            </div>
+
+            {/* Последовательность бросков */}
+            <div className="bg-white p-3 rounded-xl border border-[#E6DCCF]">
+              <h3 className="text-xs font-bold text-[#6E5D4F] uppercase tracking-wider mb-2">
+                Последовательность бросков ({throws.length})
+              </h3>
+              {throws.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">Броски ещё не делались</p>
+              ) : (
+                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                  {throws
+                    .slice()
+                    .reverse()
+                    .map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex justify-between items-center text-xs py-1 px-2 bg-[#FDFBF7] rounded border border-[#EFE7DD]"
+                      >
+                        <span className="font-semibold text-[#4A3228] truncate max-w-[90px]">
+                          {t.teamName}
+                        </span>
+                        <span className="text-gray-500 font-mono">
+                          Гейм {t.geym} • {t.distance}m
+                        </span>
+                        <span
+                          className={`font-bold ${
+                            t.result === "carreau"
+                              ? "text-amber-600"
+                              : t.result === "success"
+                              ? "text-green-700"
+                              : "text-red-600"
+                          }`}
+                        >
+                          {t.result === "carreau"
+                            ? "💥 КАРО"
+                            : `${t.type === "point" ? "Пойнт" : "Тир"} ${
+                                t.result === "success" ? "✓" : "✗"
+                              }`}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 3. ОБЗОР (СТАТИСТИКА ТЕКУЩЕЙ ПАРТИИ) */}
+        {activeTab === "stats" && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-sm font-bold text-[#4A3228]">
+                Обзор: {FORMATS[setupData.format]?.label || "Партия"}
+              </h2>
+              <button
+                onClick={() => copyStatsToClipboard(setupData, throws)}
+                className="px-3 py-1.5 text-xs bg-[#3B5E49] hover:bg-[#2D4838] text-white rounded-lg font-semibold shadow-sm transition-all"
+              >
+                {copied ? "✓ Скопировано" : "📋 В чат"}
+              </button>
+            </div>
+
+            {/* Карточки с % Пойнта, Тира и Каро */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-white p-2.5 rounded-xl border border-[#E6DCCF] text-center">
+                <div className="text-[11px] text-[#6E5D4F] font-semibold">Пойнт</div>
+                <div className="text-xl font-black text-[#4A3228]">
+                  {currentStats.point.percent}%
+                </div>
+                <div className="text-[9px] text-gray-500">
+                  {currentStats.point.success}/{currentStats.point.total}
+                </div>
+              </div>
+
+              <div className="bg-white p-2.5 rounded-xl border border-[#E6DCCF] text-center">
+                <div className="text-[11px] text-[#6E5D4F] font-semibold">Тир</div>
+                <div className="text-xl font-black text-[#4A3228]">
+                  {currentStats.tir.percent}%
+                </div>
+                <div className="text-[9px] text-gray-500">
+                  {currentStats.tir.hits}/{currentStats.tir.total}
+                </div>
+              </div>
+
+              <div className="bg-[#FEF3C7] p-2.5 rounded-xl border border-[#F59E0B] text-center">
+                <div className="text-[11px] text-[#92400E] font-bold">Каро</div>
+                <div className="text-xl font-black text-[#92400E]">
+                  {currentStats.carreau.percent}%
+                </div>
+                <div className="text-[9px] text-[#B45309]">
+                  {currentStats.carreau.count} шт.
+                </div>
+              </div>
+            </div>
+
+            {/* Детализация по 3 диапазонам дистанции */}
+            <div className="bg-white p-3 rounded-xl border border-[#E6DCCF] space-y-2.5">
+              <h3 className="text-xs font-bold text-[#6E5D4F] uppercase tracking-wider">
+                Статистика по дистанциям
+              </h3>
+
+              {Object.values(currentStats.byDistance).map((group, idx) => (
+                <div key={idx} className="p-2 bg-[#FDFBF7] rounded-lg border border-[#EFE7DD]">
+                  <div className="text-xs font-bold text-[#4A3228] mb-1">{group.label}</div>
+                  <div className="grid grid-cols-3 text-[11px] text-[#524338]">
+                    <div>
+                      Пойнт: <b>{group.stats.pPct}%</b>
+                    </div>
+                    <div>
+                      Тир: <b>{group.stats.tPct}%</b>
+                    </div>
+                    <div>
+                      Каро: <b>{group.stats.cHits} шт</b>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4. ИСТОРИЯ ПАРТИЙ */}
+        {activeTab === "history" && (
+          <div className="space-y-4">
+            <h2 className="text-sm font-bold text-[#4A3228]">История партий</h2>
+
+            {history.length === 0 ? (
+              <div className="bg-white p-6 rounded-xl border border-[#E6DCCF] text-center text-xs text-gray-400">
+                Завершённых партий пока нет.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {history.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => setSelectedHistoryParty(item)}
+                    className="bg-white p-3 rounded-xl border border-[#E6DCCF] shadow-sm hover:border-[#6E473B] cursor-pointer transition-all space-y-1"
+                  >
+                    <div className="flex justify-between items-center text-xs text-gray-500">
+                      <span>{item.date}</span>
+                      <span className="font-semibold text-[#6E473B]">{item.format}</span>
+                    </div>
+                    <div className="text-xs font-bold text-[#4A3228]">{item.event}</div>
+                    <div className="flex justify-between items-center pt-1 text-xs font-black">
+                      <span>{item.team1}</span>
+                      <span className="bg-[#F5EFE6] px-2 py-0.5 rounded border border-[#E6DCCF]">
+                        {item.score1} : {item.score2}
+                      </span>
+                      <span>{item.team2}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 border-t-2 bg-white" style={{ borderColor: "#c9c2b0" }}>
-        <div className="max-w-md mx-auto grid grid-cols-2">
-          <button
-            onClick={() => setTab("log")}
-            className="flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold"
-            style={{ color: tab === "log" ? PINE : "#8a8375" }}
-          >
-            <ClipboardList size={18} />
-            Запись
-          </button>
-          <button
-            onClick={() => setTab("stats")}
-            className="flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold"
-            style={{ color: tab === "stats" ? PINE : "#8a8375" }}
-          >
-            <BarChart3 size={18} />
-            Статистика
-          </button>
+      {/* МОДАЛЬНОЕ ОКНО ДЕТАЛЕЙ ПАРТИИ ИЗ ИСТОРИИ */}
+      {selectedHistoryParty && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-4 w-full max-w-sm space-y-3 max-h-[90vh] overflow-y-auto shadow-xl">
+            <div className="flex justify-between items-center border-b pb-2 border-[#E6DCCF]">
+              <h3 className="font-bold text-xs text-[#4A3228]">Обзор партии</h3>
+              <button
+                onClick={() => setSelectedHistoryParty(null)}
+                className="text-gray-400 hover:text-black font-bold text-sm px-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-xs space-y-1">
+              <div>
+                <b>Событие:</b> {selectedHistoryParty.event}
+              </div>
+              <div>
+                <b>Дата:</b> {selectedHistoryParty.date}
+              </div>
+              <div>
+                <b>Формат:</b> {selectedHistoryParty.format}
+              </div>
+              <div className="font-bold text-sm text-[#6E473B] pt-1">
+                {selectedHistoryParty.team1} [{selectedHistoryParty.score1} :{" "}
+                {selectedHistoryParty.score2}] {selectedHistoryParty.team2}
+              </div>
+            </div>
+
+            {/* Процентная статистика прошедшей партии */}
+            {(() => {
+              const hStats = calculateStats(selectedHistoryParty.throws || []);
+              return (
+                <div className="space-y-3 pt-2">
+                  <div className="grid grid-cols-3 gap-1.5 text-center text-xs">
+                    <div className="p-2 bg-[#FDFBF7] rounded border border-[#E6DCCF]">
+                      <div className="text-[10px] text-[#6E5D4F]">Пойнт</div>
+                      <div className="text-base font-black text-[#4A3228]">{hStats.point.percent}%</div>
+                    </div>
+                    <div className="p-2 bg-[#FDFBF7] rounded border border-[#E6DCCF]">
+                      <div className="text-[10px] text-[#6E5D4F]">Тир</div>
+                      <div className="text-base font-black text-[#4A3228]">{hStats.tir.percent}%</div>
+                    </div>
+                    <div className="p-2 bg-[#FEF3C7] rounded border border-[#F59E0B]">
+                      <div className="text-[10px] text-[#92400E]">Каро</div>
+                      <div className="text-base font-black text-[#92400E]">
+                        {hStats.carreau.percent}%
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="text-xs font-bold text-[#6E5D4F]">По дистанциям:</div>
+                    {Object.values(hStats.byDistance).map((d, i) => (
+                      <div key={i} className="text-[10px] p-1.5 bg-[#FDFBF7] rounded border border-[#EFE7DD]">
+                        <b>{d.label}:</b> P {d.stats.pPct}% | T {d.stats.tPct}% | Каро:{" "}
+                        {d.stats.cHits} шт
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <button
+              onClick={() => copyStatsToClipboard(selectedHistoryParty, selectedHistoryParty.throws)}
+              className="w-full py-2 bg-[#3B5E49] hover:bg-[#2D4838] text-white text-xs font-bold rounded-lg shadow transition-all"
+            >
+              {copied ? "✓ Скопировано" : "Скопировать статистику в чат"}
+            </button>
+          </div>
         </div>
-      </div>
-    </div>
-  );
-}
+      )}
 
-function StatsBlock({ title, players, throws, accent }) {
-  const teamRows = players.map((p) => ({ name: p, s: calcStats(throws, p) }));
-  const total = teamRows.reduce(
-    (acc, r) => ({
-      tirTotal: acc.tirTotal + r.s.tirTotal,
-      tirSuccess: acc.tirSuccess + r.s.tirSuccess,
-      carreau: acc.carreau + r.s.carreau,
-      pointTotal: acc.pointTotal + r.s.pointTotal,
-      pointSuccess: acc.pointSuccess + r.s.pointSuccess,
-      firstPointTotal: acc.firstPointTotal + r.s.firstPointTotal,
-      firstPointSuccess: acc.firstPointSuccess + r.s.firstPointSuccess,
-    }),
-    { tirTotal: 0, tirSuccess: 0, carreau: 0, pointTotal: 0, pointSuccess: 0, firstPointTotal: 0, firstPointSuccess: 0 }
-  );
+      {/* МОДАЛЬНОЕ ОКНО КОНЦА ГЕЙМА */}
+      {showEndGeymModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl p-4 w-full max-w-xs space-y-4 shadow-xl">
+            <h3 className="font-bold text-xs text-[#4A3228] text-center border-b pb-2 border-[#E6DCCF]">
+              Результат гейма №{partyState.geym}
+            </h3>
 
-  return (
-    <div className="mb-6">
-      <div
-        className="text-xs font-bold uppercase tracking-wide mb-2 pb-1 border-b-2"
-        style={{ color: accent, borderColor: accent }}
-      >
-        {title}
-      </div>
-      <div className="space-y-2">
-        <PlayerCard name="Итого" s={total} bold accent={accent} />
-        {teamRows.map((r) => (
-          <PlayerCard key={r.name} name={r.name} s={r.s} accent={accent} />
-        ))}
-      </div>
-    </div>
-  );
-}
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs text-[#6E5D4F] mb-1">{setupData.team1}</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="6"
+                  value={geymPoints.team1}
+                  onChange={(e) => setGeymPoints({ ...geymPoints, team1: e.target.value })}
+                  className="w-full p-2 border border-[#D9C8B4] rounded-lg text-sm text-center font-bold focus:outline-none focus:border-[#6E473B]"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-[#6E5D4F] mb-1">{setupData.team2}</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="6"
+                  value={geymPoints.team2}
+                  onChange={(e) => setGeymPoints({ ...geymPoints, team2: e.target.value })}
+                  className="w-full p-2 border border-[#D9C8B4] rounded-lg text-sm text-center font-bold focus:outline-none focus:border-[#6E473B]"
+                />
+              </div>
+            </div>
 
-function PlayerCard({ name, s, bold, accent }) {
-  return (
-    <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: bold ? accent : "#dcd6c8" }}>
-      <div className={`text-sm mb-2 ${bold ? "font-black" : "font-bold"}`}>{name}</div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <StatCell label="Тир" value={`${s.tirSuccess}/${s.tirTotal}`} pctVal={pct(s.tirSuccess, s.tirTotal)} />
-        <StatCell label="Каро" value={`${s.carreau}/${s.tirTotal}`} pctVal={pct(s.carreau, s.tirTotal)} />
-        <StatCell label="Пойнт" value={`${s.pointSuccess}/${s.pointTotal}`} pctVal={pct(s.pointSuccess, s.pointTotal)} />
-        <StatCell
-          label="1й пойнт"
-          value={`${s.firstPointSuccess}/${s.firstPointTotal}`}
-          pctVal={pct(s.firstPointSuccess, s.firstPointTotal)}
-        />
-      </div>
-    </div>
-  );
-}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowEndGeymModal(false)}
+                className="flex-1 py-2 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-semibold"
+              >
+                Отмена
+              </button>
+              <button
+                onClick={handleFinishGeym}
+                className="flex-1 py-2 text-xs bg-[#6E473B] hover:bg-[#58382E] text-white rounded-lg font-bold"
+              >
+                Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-function StatCell({ label, value, pctVal }) {
-  return (
-    <div className="flex items-center justify-between px-2 py-1.5 rounded" style={{ backgroundColor: "#F1EEE5" }}>
-      <div>
-        <div className="text-[10px] uppercase tracking-wide opacity-60">{label}</div>
-        <div className="font-semibold">{value}</div>
-      </div>
-      <div className="text-base font-black">{pctVal}</div>
+      {/* ПОДПИСЬ РАЗРАБОТЧИКА ВНИЗУ КАЖДОЙ СТРАНИЦЫ */}
+      <footer className="mt-4 pt-3 border-t border-[#E6DCCF] text-center">
+        <p className="text-[11px] italic text-[#8C7A6B] font-serif">Équipe Radius</p>
+      </footer>
     </div>
   );
 }
