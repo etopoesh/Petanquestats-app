@@ -1,0 +1,20 @@
+{
+  "short_name": "Petanque",
+  "name": "PetanqueTracker",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/logo.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#FDFBF7",
+  "theme_color": "#6E473B",
+  "display": "standalone"
+}
