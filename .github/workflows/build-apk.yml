@@ -1,4 +1,4 @@
-[29.07.2026 15:29] Женя Иванов: name: Build Android APK
+name: Build Android APK
 
 on:
   push:
