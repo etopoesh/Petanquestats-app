@@ -28,14 +28,16 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          npm install
+          npm install -D @tailwindcss/postcss
 
       - name: Build Web Assets
         run: npm run build
 
       - name: Add Android Platform and Sync
         run: |
-          npx cap add android
+          npx cap add android || true
           npx cap sync android
 
       - name: Build Debug APK
@@ -48,4 +50,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: petanque-stats-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.ap
