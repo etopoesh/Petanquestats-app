@@ -1,4 +1,4 @@
-name: Build Android APK
+[29.07.2026 15:29] Женя Иванов: name: Build Android APK
 
 on:
   push:
@@ -50,4 +50,57 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: petanque-stats-apk
-          path: android/app/build/outputs/apk/debug/app-debug.ap
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+[29.07.2026 15:33] Женя Иванов: name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: |
+          npm install
+          npm install -D @tailwindcss/postcss
+
+      - name: Build Web Assets
+        run: npm run build
+
+      - name: Add Android Platform and Sync
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      - name: Build Debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: petanque-stats-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
