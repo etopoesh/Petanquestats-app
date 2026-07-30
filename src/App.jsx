@@ -11,10 +11,11 @@ const BAD = "#A23B32";
 const CARD = "#F1EEE5";
 const BORDER = "#c9c2b0";
 
+// balls = сколько шаров бросает КАЖДЫЙ игрок за гейм (не команда)
 const FORMATS = {
   triplet: { label: "Триплет", team1: 3, team2: 3, balls: 2 },
   doublet: { label: "Дуплет", team1: 2, team2: 2, balls: 3 },
-  tete: { label: "Тет-а-тет", team1: 1, team2: 1, balls: 6 },
+  tete: { label: "Тет-а-тет", team1: 1, team2: 1, balls: 3 },
 };
 
 const CUR_KEY = "petanque_current_v2";
@@ -39,15 +40,15 @@ function emptyDraft() {
 function withFormat(draft, newFormat) {
   const cfg = FORMATS[newFormat];
   const resize = (arr, n) => {
-    const next = arr.slice(0, n);
+    const next = (arr || []).slice(0, n);
     while (next.length < n) next.push("");
     return next;
   };
   return {
     ...draft,
     format: newFormat,
-    team1Players: resize(draft.team1Players || [], cfg.team1),
-    team2Players: resize(draft.team2Players || [], cfg.team2),
+    team1Players: resize(draft.team1Players, cfg.team1),
+    team2Players: resize(draft.team2Players, cfg.team2),
   };
 }
 
@@ -91,30 +92,31 @@ function sumStats(list) {
   );
 }
 
-const DIST_BUCKETS = [
-  { label: "6 – 7.5 м", min: 6, max: 7.5 },
-  { label: "7.5 – 8.5 м", min: 7.5, max: 8.5 },
-  { label: "8.5 – 10 м", min: 8.5, max: 10.001 },
+// Дистанция — три именованные зоны вместо числовых меток
+const DIST_ZONES = [
+  { key: "near", label: "Ближняя", hint: "≤ 7 м", test: (d) => d <= 7 },
+  { key: "mid", label: "Средняя", hint: "7.1 – 8.5 м", test: (d) => d > 7 && d <= 8.5 },
+  { key: "far", label: "Дальняя", hint: "≥ 8.51 м", test: (d) => d > 8.5 },
 ];
 
-function bucketFor(dist) {
+function zoneFor(dist) {
   const d = parseFloat(String(dist).replace(",", "."));
   if (isNaN(d)) return null;
-  return DIST_BUCKETS.find((b) => d >= b.min && d < b.max) || null;
+  return DIST_ZONES.find((z) => z.test(d)) || null;
 }
 
-function calcDistanceBuckets(throws, teamTag, legacyTag = "") {
+function calcDistanceZones(throws, teamTag) {
   const out = { point: {}, tir: {} };
-  DIST_BUCKETS.forEach((b) => {
-    out.point[b.label] = { total: 0, success: 0 };
-    out.tir[b.label] = { total: 0, success: 0 };
+  DIST_ZONES.forEach((z) => {
+    out.point[z.key] = { total: 0, success: 0 };
+    out.tir[z.key] = { total: 0, success: 0 };
   });
   throws
-    .filter((t) => t.team === teamTag || (legacyTag && t.team === legacyTag))
+    .filter((t) => t.team === teamTag)
     .forEach((t) => {
-      const b = bucketFor(t.distance);
-      if (!b || (t.type !== "point" && t.type !== "tir")) return;
-      const bucket = out[t.type][b.label];
+      const z = zoneFor(t.distance);
+      if (!z || (t.type !== "point" && t.type !== "tir")) return;
+      const bucket = out[t.type][z.key];
       bucket.total++;
       const ok = t.type === "point" ? t.result === "success" : t.result === "hit" || t.result === "carreau";
       if (ok) bucket.success++;
@@ -159,36 +161,16 @@ export default function App() {
       const cur = localStorage.getItem(CUR_KEY);
       if (cur) {
         const data = JSON.parse(cur);
-        if (data.match) {
-          // Normalize old legacy keys if necessary
-          const m = data.match;
-          setMatch({
-            ...m,
-            team1Name: m.team1Name || m.ourTeamName || "Команда 1",
-            team2Name: m.team2Name || m.oppTeamName || "Команда 2",
-            team1Players: m.team1Players || m.ownPlayers || [],
-            team2Players: m.team2Players || m.oppPlayers || [],
-          });
-        }
-        if (data.geimState) {
-          const gs = data.geimState;
-          setGeimState({
-            geim: gs.geim || 1,
-            team1Score: gs.team1Score ?? gs.ourScore ?? 0,
-            team2Score: gs.team2Score ?? gs.theirScore ?? 0,
-            distance: gs.distance || "",
-          });
-        }
+        if (data.match) setMatch(data.match);
+        if (data.geimState) setGeimState(data.geimState);
         if (data.throws) setThrows(data.throws);
         if (data.gameScores) setGameScores(data.gameScores);
       }
     } catch (e) {}
-
     try {
       const hist = localStorage.getItem(HIST_KEY);
       if (hist) setHistory(JSON.parse(hist));
     } catch (e) {}
-
     setLoaded(true);
   }, []);
 
@@ -234,6 +216,8 @@ export default function App() {
     persistCurrent(match, next, throws, gameScores);
   };
 
+  const ballsUsed = (player) => throws.filter((t) => t.player === player && t.geim === geimState.geim).length;
+
   const logThrow = (result) => {
     if (!selTeam || !selPlayer || !selType) return;
     const isFirst = throws.filter((t) => t.geim === geimState.geim).length === 0;
@@ -251,6 +235,12 @@ export default function App() {
     setThrows(next);
     persistCurrent(match, geimState, next, gameScores);
     setSelType(null);
+
+    const cfg = FORMATS[match.format];
+    const usedNow = next.filter((t) => t.player === selPlayer && t.geim === geimState.geim).length;
+    if (usedNow >= cfg.balls) {
+      setSelPlayer(null);
+    }
   };
 
   const undoLast = () => {
@@ -283,9 +273,7 @@ export default function App() {
     setSelTeam(null);
     setSelPlayer(null);
     setSelType(null);
-    if (t1 >= 13 || t2 >= 13) {
-      setThirteenPrompt({ team1: t1, team2: t2 });
-    }
+    if (t1 >= 13 || t2 >= 13) setThirteenPrompt({ team1: t1, team2: t2 });
   };
 
   const finalizeMatch = () => {
@@ -330,24 +318,30 @@ export default function App() {
     setTab("log");
   };
 
+  // Полная статистика (без разбивки по дистанции), без подписи разработчика — для теста на одном телефоне
   const buildShareText = (record) => {
-    const t1Name = record.team1Name || record.ourTeamName || "Команда 1";
-    const t2Name = record.team2Name || record.oppTeamName || "Команда 2";
-    const t1Players = record.team1Players || record.ownPlayers || [];
-    const t2Players = record.team2Players || record.oppPlayers || [];
-    const t1Score = record.finalTeam1Score ?? record.finalOurScore ?? 0;
-    const t2Score = record.finalTeam2Score ?? record.finalTheirScore ?? 0;
+    const t1Name = record.team1Name || "Команда 1";
+    const t2Name = record.team2Name || "Команда 2";
+    const t1Players = record.team1Players || [];
+    const t2Players = record.team2Players || [];
+    const throwsList = record.throws || [];
 
-    const t1Total = sumStats(t1Players.map((p) => calcPlayerStats(record.throws || [], p)));
-    const t2Total = sumStats(t2Players.map((p) => calcPlayerStats(record.throws || [], p)));
+    const line = (p) => {
+      const s = calcPlayerStats(throwsList, p);
+      return `  ${p} — тир: ${pct(s.tirSuccess, s.tirTotal)} (${s.tirSuccess}/${s.tirTotal}, каро ${pct(s.carreau, s.tirTotal)}) · пойнт: ${pct(s.pointSuccess, s.pointTotal)} (${s.pointSuccess}/${s.pointTotal})`;
+    };
 
-    return (
-      `${record.event || "Партия"} · ${FORMATS[record.format]?.label || "Петанк"}\n` +
-      `${t1Name} ${t1Score} : ${t2Score} ${t2Name}\n\n` +
-      `«${t1Name}» — тир: ${pct(t1Total.tirSuccess, t1Total.tirTotal)} (каро ${pct(t1Total.carreau, t1Total.tirTotal)}), пойнт: ${pct(t1Total.pointSuccess, t1Total.pointTotal)}\n` +
-      `«${t2Name}» — тир: ${pct(t2Total.tirSuccess, t2Total.tirTotal)} (каро ${pct(t2Total.carreau, t2Total.tirTotal)}), пойнт: ${pct(t2Total.pointSuccess, t2Total.pointTotal)}\n\n` +
-      `Équipe Radius`
-    );
+    const t1Total = sumStats(t1Players.map((p) => calcPlayerStats(throwsList, p)));
+    const t2Total = sumStats(t2Players.map((p) => calcPlayerStats(throwsList, p)));
+
+    let text = `${record.event || "Партия"} · ${FORMATS[record.format]?.label || ""}\n`;
+    text += `${t1Name} ${record.finalTeam1Score ?? 0} : ${record.finalTeam2Score ?? 0} ${t2Name}\n\n`;
+    text += `«${t1Name}» — тир: ${pct(t1Total.tirSuccess, t1Total.tirTotal)} (каро ${pct(t1Total.carreau, t1Total.tirTotal)}), пойнт: ${pct(t1Total.pointSuccess, t1Total.pointTotal)}\n`;
+    t1Players.forEach((p) => (text += line(p) + "\n"));
+    text += `\n«${t2Name}» — тир: ${pct(t2Total.tirSuccess, t2Total.tirTotal)} (каро ${pct(t2Total.carreau, t2Total.tirTotal)}), пойнт: ${pct(t2Total.pointSuccess, t2Total.pointTotal)}\n`;
+    t2Players.forEach((p) => (text += line(p) + "\n"));
+
+    return text.trim();
   };
 
   const shareRecord = async (record) => {
@@ -426,27 +420,12 @@ export default function App() {
 
           <div className="grid grid-cols-2 gap-3 mb-5">
             <LabeledInput label="Дата" type="date" value={draft.date} onChange={(e) => setDraft({ ...draft, date: e.target.value })} />
-            <LabeledInput
-              label="Событие"
-              value={draft.event}
-              onChange={(e) => setDraft({ ...draft, event: e.target.value })}
-              placeholder="Кубок города"
-            />
+            <LabeledInput label="Событие" value={draft.event} onChange={(e) => setDraft({ ...draft, event: e.target.value })} placeholder="Кубок города" />
           </div>
 
           <div className="grid grid-cols-2 gap-3 mb-5">
-            <LabeledInput
-              label="Команда 1"
-              value={draft.team1Name}
-              onChange={(e) => setDraft({ ...draft, team1Name: e.target.value })}
-              placeholder="Название команды 1"
-            />
-            <LabeledInput
-              label="Команда 2"
-              value={draft.team2Name}
-              onChange={(e) => setDraft({ ...draft, team2Name: e.target.value })}
-              placeholder="Название команды 2"
-            />
+            <LabeledInput label="Команда 1" value={draft.team1Name} onChange={(e) => setDraft({ ...draft, team1Name: e.target.value })} placeholder="Название команды 1" />
+            <LabeledInput label="Команда 2" value={draft.team2Name} onChange={(e) => setDraft({ ...draft, team2Name: e.target.value })} placeholder="Название команды 2" />
           </div>
 
           <div className="mb-5">
@@ -498,11 +477,7 @@ export default function App() {
           </button>
 
           {history.length > 0 && (
-            <button
-              onClick={() => setTab("history")}
-              className="w-full py-2.5 mt-3 rounded-md font-semibold text-sm border-2"
-              style={{ borderColor: BORDER, color: INK }}
-            >
+            <button onClick={() => setTab("history")} className="w-full py-2.5 mt-3 rounded-md font-semibold text-sm border-2" style={{ borderColor: BORDER, color: INK }}>
               История партий ({history.length})
             </button>
           )}
@@ -513,12 +488,12 @@ export default function App() {
   }
 
   const cfg = FORMATS[match.format];
-  const team1Name = match.team1Name || match.ourTeamName || "Команда 1";
-  const team2Name = match.team2Name || match.oppTeamName || "Команда 2";
-  const team1Players = match.team1Players || match.ownPlayers || [];
-  const team2Players = match.team2Players || match.oppPlayers || [];
-
-  const teamPlayers = selTeam === "team1" ? team1Players : selTeam === "team2" ? team2Players : [];
+  const team1Name = match.team1Name || "Команда 1";
+  const team2Name = match.team2Name || "Команда 2";
+  const team1Players = match.team1Players || [];
+  const team2Players = match.team2Players || [];
+  const rawTeamPlayers = selTeam === "team1" ? team1Players : selTeam === "team2" ? team2Players : [];
+  const teamPlayers = rawTeamPlayers.filter((p) => ballsUsed(p) < cfg.balls);
 
   // ---------------- MAIN APP ----------------
   return (
@@ -608,9 +583,7 @@ export default function App() {
                   />
                 </div>
               </div>
-              <div className="text-[10px] opacity-50 mt-1.5">
-                Если кошонет сдвинули — впишите новую дистанцию, гейм продолжается без сброса.
-              </div>
+              <div className="text-[10px] opacity-50 mt-1.5">Если кошонет сдвинули — впишите новую дистанцию, гейм продолжается без сброса.</div>
             </div>
 
             {!endGeimOpen ? (
@@ -618,11 +591,7 @@ export default function App() {
                 <button onClick={openEndGeim} className="py-2.5 rounded-md font-bold text-white text-sm" style={{ backgroundColor: PINE }}>
                   Конец гейма
                 </button>
-                <button
-                  onClick={() => setConfirmEndMatch(true)}
-                  className="py-2.5 rounded-md font-bold text-sm border-2"
-                  style={{ borderColor: BAD, color: BAD }}
-                >
+                <button onClick={() => setConfirmEndMatch(true)} className="py-2.5 rounded-md font-bold text-sm border-2" style={{ borderColor: BAD, color: BAD }}>
                   Конец партии
                 </button>
               </div>
@@ -663,7 +632,7 @@ export default function App() {
             )}
 
             <div className="mb-3">
-              <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">1. Команда</div>
+              <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Команда</div>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => {
@@ -700,32 +669,36 @@ export default function App() {
 
             {selTeam && (
               <div className="mb-3">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">2. Игрок</div>
-                <div className="grid grid-cols-1 gap-2">
-                  {teamPlayers.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => {
-                        setSelPlayer(p);
-                        setSelType(null);
-                      }}
-                      className="py-2.5 px-3 rounded-md font-semibold text-sm border-2 text-left"
-                      style={{
-                        borderColor: selPlayer === p ? PINE_DARK : BORDER,
-                        backgroundColor: selPlayer === p ? "#dfe6df" : "white",
-                        color: INK,
-                      }}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
+                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Игрок</div>
+                {teamPlayers.length === 0 ? (
+                  <div className="text-xs italic opacity-50 px-1">Все шары этой команды в гейме разыграны</div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-2">
+                    {teamPlayers.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => {
+                          setSelPlayer(p);
+                          setSelType(null);
+                        }}
+                        className="py-2.5 px-3 rounded-md font-semibold text-sm border-2 text-left"
+                        style={{
+                          borderColor: selPlayer === p ? PINE_DARK : BORDER,
+                          backgroundColor: selPlayer === p ? "#dfe6df" : "white",
+                          color: INK,
+                        }}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
             {selPlayer && (
               <div className="mb-3">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">3. Тип броска</div>
+                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Тип броска</div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => setSelType("point")}
@@ -755,13 +728,13 @@ export default function App() {
 
             {selType === "point" && (
               <div className="mb-4">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">4. Результат</div>
+                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Результат</div>
                 <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => logThrow("success")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: GOOD }}>
                     Успех
                   </button>
                   <button onClick={() => logThrow("fail")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: BAD }}>
-                    Промах
+                    Неуспех
                   </button>
                 </div>
               </div>
@@ -769,16 +742,16 @@ export default function App() {
 
             {selType === "tir" && (
               <div className="mb-4">
-                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">4. Результат</div>
+                <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Результат</div>
                 <div className="grid grid-cols-3 gap-2">
-                  <button onClick={() => logThrow("hit")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: GOOD }}>
+                  <button onClick={() => logThrow("miss")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: BAD }}>
+                    Промах
+                  </button>
+                  <button onClick={() => logThrow("hit")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: "#7a8c3c" }}>
                     Попадание
                   </button>
-                  <button onClick={() => logThrow("carreau")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: BRONZE }}>
+                  <button onClick={() => logThrow("carreau")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: GOOD }}>
                     Каро
-                  </button>
-                  <button onClick={() => logThrow("fail")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: BAD }}>
-                    Промах
                   </button>
                 </div>
               </div>
@@ -787,8 +760,8 @@ export default function App() {
             {throws.length > 0 && (
               <div className="mt-4 rounded-lg border-2 p-3 bg-white" style={{ borderColor: BORDER }}>
                 <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-bold uppercase opacity-70">Броски текущего гейма</div>
-                  <button onClick={undoLast} className="flex items-center gap-1 text-xs font-semibold opacity-70 hover:opacity-100">
+                  <div className="text-xs font-bold uppercase opacity-70">Броски текущей партии</div>
+                  <button onClick={undoLast} className="flex items-center gap-1 text-xs font-semibold opacity-70">
                     <RotateCcw size={13} /> Отмена
                   </button>
                 </div>
@@ -799,12 +772,11 @@ export default function App() {
                     .map((t) => (
                       <div key={t.id} className="flex items-center justify-between text-xs p-1.5 rounded" style={{ backgroundColor: CARD }}>
                         <div className="truncate mr-2">
-                          <span className="font-bold">{t.player}</span> ({t.team === "team1" || t.team === "own" ? team1Name : team2Name}):{" "}
-                          {t.type === "point" ? "пойнт" : "тир"} —{" "}
+                          <span className="font-bold">{t.player}</span> ({t.team === "team1" ? team1Name : team2Name}): {t.type === "point" ? "пойнт" : "тир"} —{" "}
                           {t.result === "success" || t.result === "hit" ? "успех" : t.result === "carreau" ? "каро" : "промах"}
                           {t.distance ? ` [${t.distance}м]` : ""}
                         </div>
-                        <button onClick={() => deleteThrow(t.id)} className="opacity-40 hover:opacity-100 p-0.5">
+                        <button onClick={() => deleteThrow(t.id)} className="opacity-40 p-0.5">
                           <X size={13} />
                         </button>
                       </div>
@@ -816,146 +788,117 @@ export default function App() {
         )}
 
         {/* ---- STATS TAB ---- */}
-        {tab === "stats" && <StatsPanel match={match} throws={throws} gameScores={gameScores} />}
+        {tab === "stats" && <StatsPanel match={match} throws={throws} />}
 
         {/* ---- HISTORY TAB ---- */}
         {tab === "history" && <HistoryPanel history={history} onShare={shareRecord} onDelete={deleteHistoryRecord} />}
       </div>
 
-      {/* Bottom Nav Bar */}
-      <div className="fixed bottom-0 left-0 right-0 border-t-2 bg-white flex justify-around py-2 max-w-md mx-auto" style={{ borderColor: BORDER }}>
-        <button
-          onClick={() => setTab("log")}
-          className={`flex flex-col items-center text-xs font-semibold ${tab === "log" ? "opacity-100" : "opacity-40"}`}
-          style={{ color: tab === "log" ? PINE : INK }}
-        >
-          <ClipboardList size={18} />
-          <span>Запись</span>
-        </button>
-        <button
-          onClick={() => setTab("stats")}
-          className={`flex flex-col items-center text-xs font-semibold ${tab === "stats" ? "opacity-100" : "opacity-40"}`}
-          style={{ color: tab === "stats" ? PINE : INK }}
-        >
-          <BarChart3 size={18} />
-          <span>Статистика</span>
-        </button>
-        <button
-          onClick={() => setTab("history")}
-          className={`flex flex-col items-center text-xs font-semibold ${tab === "history" ? "opacity-100" : "opacity-40"}`}
-          style={{ color: tab === "history" ? PINE : INK }}
-        >
-          <History size={18} />
-          <span>История</span>
-        </button>
+      <Footer />
+
+      <div className="fixed bottom-0 left-0 right-0 border-t-2 bg-white" style={{ borderColor: BORDER }}>
+        <div className="max-w-md mx-auto grid grid-cols-3">
+          <button onClick={() => setTab("log")} className="flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold" style={{ color: tab === "log" ? PINE : "#8a8375" }}>
+            <ClipboardList size={18} />
+            Запись
+          </button>
+          <button onClick={() => setTab("stats")} className="flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold" style={{ color: tab === "stats" ? PINE : "#8a8375" }}>
+            <BarChart3 size={18} />
+            Статистика
+          </button>
+          <button onClick={() => setTab("history")} className="flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold" style={{ color: tab === "history" ? PINE : "#8a8375" }}>
+            <History size={18} />
+            История
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-function StatsPanel({ match, throws, gameScores }) {
-  const team1Name = match.team1Name || match.ourTeamName || "Команда 1";
-  const team2Name = match.team2Name || match.oppTeamName || "Команда 2";
-  const team1Players = match.team1Players || match.ownPlayers || [];
-  const team2Players = match.team2Players || match.oppPlayers || [];
-  const safeThrows = throws || [];
+// ---------------- STATS (карточный вид — оригинальный дизайн) ----------------
 
-  const t1Stats = team1Players.map((p) => ({ name: p, ...calcPlayerStats(safeThrows, p) }));
-  const t2Stats = team2Players.map((p) => ({ name: p, ...calcPlayerStats(safeThrows, p) }));
-
-  const t1Sum = sumStats(t1Stats);
-  const t2Sum = sumStats(t2Stats);
-
-  const t1Buckets = calcDistanceBuckets(safeThrows, "team1", "own");
-  const t2Buckets = calcDistanceBuckets(safeThrows, "team2", "opp");
-
+function StatsBlock({ title, players, throws, teamTag, accent }) {
+  const teamRows = players.map((p) => ({ name: p, s: calcPlayerStats(throws, p) }));
+  const total = sumStats(teamRows.map((r) => r.s));
+  const zones = calcDistanceZones(throws, teamTag);
   return (
-    <div className="space-y-4">
-      {/* Сравнение команд */}
-      <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: BORDER }}>
-        <div className="text-xs font-bold uppercase mb-2" style={{ color: BRONZE }}>Командный итог</div>
-        <div className="grid grid-cols-2 gap-3 text-xs">
-          <div className="p-2 rounded border" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-            <div className="font-bold border-b pb-1 mb-1 truncate" style={{ borderColor: BORDER }}>{team1Name}</div>
-            <div>Тир: {pct(t1Sum.tirSuccess, t1Sum.tirTotal)} ({t1Sum.tirSuccess}/{t1Sum.tirTotal})</div>
-            <div>Пойнт: {pct(t1Sum.pointSuccess, t1Sum.pointTotal)} ({t1Sum.pointSuccess}/{t1Sum.pointTotal})</div>
-          </div>
-          <div className="p-2 rounded border" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-            <div className="font-bold border-b pb-1 mb-1 truncate" style={{ borderColor: BORDER }}>{team2Name}</div>
-            <div>Тир: {pct(t2Sum.tirSuccess, t2Sum.tirTotal)} ({t2Sum.tirSuccess}/{t2Sum.tirTotal})</div>
-            <div>Пойнт: {pct(t2Sum.pointSuccess, t2Sum.pointTotal)} ({t2Sum.pointSuccess}/{t2Sum.pointTotal})</div>
-          </div>
-        </div>
+    <div className="mb-6">
+      <div className="text-xs font-bold uppercase tracking-wide mb-2 pb-1 border-b-2" style={{ color: accent, borderColor: accent }}>
+        {title}
       </div>
-
-      {/* Игроки Команды 1 */}
-      <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: BORDER }}>
-        <div className="text-xs font-bold uppercase mb-2" style={{ color: BRONZE }}>Игроки — {team1Name}</div>
-        <div className="space-y-2 text-xs">
-          {t1Stats.map((s) => (
-            <div key={s.name} className="p-2 rounded border" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-              <div className="font-bold mb-1">{s.name}</div>
-              <div>Тир: {pct(s.tirSuccess, s.tirTotal)} ({s.tirSuccess}/{s.tirTotal}) · Каро: {s.carreau}</div>
-              <div>Пойнт: {pct(s.pointSuccess, s.pointTotal)} ({s.pointSuccess}/{s.pointTotal})</div>
-              <div>1-й пойнт: {pct(s.firstPointSuccess, s.firstPointTotal)} ({s.firstPointSuccess}/{s.firstPointTotal})</div>
-            </div>
-          ))}
-        </div>
+      <div className="space-y-2 mb-3">
+        <PlayerCard name="Итого" s={total} bold accent={accent} />
+        {teamRows.map((r) => (
+          <PlayerCard key={r.name} name={r.name} s={r.s} accent={accent} />
+        ))}
       </div>
-
-      {/* Игроки Команды 2 */}
-      <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: BORDER }}>
-        <div className="text-xs font-bold uppercase mb-2" style={{ color: BRONZE }}>Игроки — {team2Name}</div>
-        <div className="space-y-2 text-xs">
-          {t2Stats.map((s) => (
-            <div key={s.name} className="p-2 rounded border" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-              <div className="font-bold mb-1">{s.name}</div>
-              <div>Тир: {pct(s.tirSuccess, s.tirTotal)} ({s.tirSuccess}/{s.tirTotal}) · Каро: {s.carreau}</div>
-              <div>Пойнт: {pct(s.pointSuccess, s.pointTotal)} ({s.pointSuccess}/{s.pointTotal})</div>
-              <div>1-й пойнт: {pct(s.firstPointSuccess, s.firstPointTotal)} ({s.firstPointSuccess}/{s.firstPointTotal})</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Дистанции Команды 1 */}
-      <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: BORDER }}>
-        <div className="text-xs font-bold uppercase mb-2" style={{ color: BRONZE }}>Дистанции — {team1Name}</div>
-        <div className="space-y-1.5 text-xs">
-          {DIST_BUCKETS.map((b) => {
-            const pt = t1Buckets.point[b.label];
-            const tr = t1Buckets.tir[b.label];
-            return (
-              <div key={b.label} className="p-2 rounded border" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-                <div className="font-bold">{b.label}</div>
-                <div>Пойнт: {pct(pt.success, pt.total)} ({pt.success}/{pt.total})</div>
-                <div>Тир: {pct(tr.success, tr.total)} ({tr.success}/{tr.total})</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide mb-1.5 opacity-60">По дистанции</div>
+      <div className="grid grid-cols-3 gap-2">
+        {DIST_ZONES.map((z) => {
+          const pt = zones.point[z.key];
+          const tr = zones.tir[z.key];
+          return (
+            <div key={z.key} className="rounded-lg p-2 text-center" style={{ backgroundColor: CARD }}>
+              <div className="text-[10px] font-bold uppercase">{z.label}</div>
+              <div className="text-[9px] opacity-50 mb-1">{z.hint}</div>
+              <div className="text-[10px]">
+                П: <span className="font-black">{pct(pt.success, pt.total)}</span>
               </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Дистанции Команды 2 */}
-      <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: BORDER }}>
-        <div className="text-xs font-bold uppercase mb-2" style={{ color: BRONZE }}>Дистанции — {team2Name}</div>
-        <div className="space-y-1.5 text-xs">
-          {DIST_BUCKETS.map((b) => {
-            const pt = t2Buckets.point[b.label];
-            const tr = t2Buckets.tir[b.label];
-            return (
-              <div key={b.label} className="p-2 rounded border" style={{ borderColor: BORDER, backgroundColor: CARD }}>
-                <div className="font-bold">{b.label}</div>
-                <div>Пойнт: {pct(pt.success, pt.total)} ({pt.success}/{pt.total})</div>
-                <div>Тир: {pct(tr.success, tr.total)} ({tr.success}/{tr.total})</div>
+              <div className="text-[10px]">
+                Т: <span className="font-black">{pct(tr.success, tr.total)}</span>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
+
+function PlayerCard({ name, s, bold, accent }) {
+  return (
+    <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: bold ? accent : "#dcd6c8" }}>
+      <div className={`text-sm mb-2 ${bold ? "font-black" : "font-bold"}`}>{name}</div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <StatCell label="Тир" value={`${s.tirSuccess}/${s.tirTotal}`} pctVal={pct(s.tirSuccess, s.tirTotal)} />
+        <StatCell label="Каро" value={`${s.carreau}/${s.tirTotal}`} pctVal={pct(s.carreau, s.tirTotal)} />
+        <StatCell label="Пойнт" value={`${s.pointSuccess}/${s.pointTotal}`} pctVal={pct(s.pointSuccess, s.pointTotal)} />
+        <StatCell label="1й пойнт" value={`${s.firstPointSuccess}/${s.firstPointTotal}`} pctVal={pct(s.firstPointSuccess, s.firstPointTotal)} />
+      </div>
+    </div>
+  );
+}
+
+function StatCell({ label, value, pctVal }) {
+  return (
+    <div className="flex items-center justify-between px-2 py-1.5 rounded" style={{ backgroundColor: CARD }}>
+      <div>
+        <div className="text-[10px] uppercase tracking-wide opacity-60">{label}</div>
+        <div className="font-semibold">{value}</div>
+      </div>
+      <div className="text-base font-black">{pctVal}</div>
+    </div>
+  );
+}
+
+function StatsPanel({ match, throws }) {
+  const team1Name = match.team1Name || "Команда 1";
+  const team2Name = match.team2Name || "Команда 2";
+  const team1Players = match.team1Players || [];
+  const team2Players = match.team2Players || [];
+  const safeThrows = throws || [];
+  return (
+    <div>
+      <h2 className="text-xl font-black mb-1">Обзор</h2>
+      <div className="text-xs opacity-60 mb-4">{FORMATS[match.format]?.label}</div>
+      <StatsBlock title={team1Name} players={team1Players} throws={safeThrows} teamTag="team1" accent={PINE} />
+      <StatsBlock title={team2Name} players={team2Players} throws={safeThrows} teamTag="team2" accent={BRONZE} />
+    </div>
+  );
+}
+
+// ---------------- HISTORY ----------------
 
 function HistoryPanel({ history, onShare, onDelete }) {
   const [expandedId, setExpandedId] = useState(null);
@@ -965,99 +908,87 @@ function HistoryPanel({ history, onShare, onDelete }) {
     return <div className="text-sm opacity-60 text-center py-8">История партий пуста</div>;
   }
 
-  const toggleExpand = (id) => {
-    setExpandedId(expandedId === id ? null : id);
-  };
+  const toggleExpand = (id) => setExpandedId(expandedId === id ? null : id);
 
   return (
-    <div className="space-y-3">
-      <div className="text-xs font-bold uppercase opacity-70 mb-2">Прошедшие партии</div>
-      {history.map((rec) => {
-        const isExpanded = expandedId === rec.id;
-        const isDeleting = deleteConfirmId === rec.id;
+    <div>
+      <h2 className="text-xl font-black mb-3">История партий</h2>
+      <div className="space-y-3">
+        {history.map((rec) => {
+          const isExpanded = expandedId === rec.id;
+          const isDeleting = deleteConfirmId === rec.id;
+          const team1Name = rec.team1Name || "Команда 1";
+          const team2Name = rec.team2Name || "Команда 2";
+          const score1 = rec.finalTeam1Score ?? 0;
+          const score2 = rec.finalTeam2Score ?? 0;
 
-        const team1Name = rec.team1Name || rec.ourTeamName || "Команда 1";
-        const team2Name = rec.team2Name || rec.oppTeamName || "Команда 2";
-        const score1 = rec.finalTeam1Score ?? rec.finalOurScore ?? 0;
-        const score2 = rec.finalTeam2Score ?? rec.finalTheirScore ?? 0;
-
-        return (
-          <div key={rec.id} className="rounded-lg border-2 p-3 bg-white transition-all" style={{ borderColor: BORDER }}>
-            <div className="flex items-start justify-between mb-2">
-              <div className="cursor-pointer flex-1 mr-2" onClick={() => toggleExpand(rec.id)}>
-                <div className="text-[10px] uppercase opacity-60 flex items-center gap-1">
-                  <span>{rec.date}</span>
-                  {rec.event && <span>· {rec.event}</span>}
-                  {rec.format && FORMATS[rec.format] && <span>· {FORMATS[rec.format].label}</span>}
+          return (
+            <div key={rec.id} className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: BORDER }}>
+              <div className="flex items-start justify-between mb-2">
+                <div className="cursor-pointer flex-1 mr-2" onClick={() => toggleExpand(rec.id)}>
+                  <div className="text-[10px] uppercase opacity-60 flex items-center gap-1 flex-wrap">
+                    <span>{rec.date}</span>
+                    {rec.event && <span>· {rec.event}</span>}
+                    {rec.format && FORMATS[rec.format] && <span>· {FORMATS[rec.format].label}</span>}
+                  </div>
+                  <div className="text-sm font-bold flex items-center gap-1.5 mt-0.5">
+                    <span className="truncate">{team1Name}</span>
+                    <span className="font-black shrink-0">
+                      {score1} : {score2}
+                    </span>
+                    <span className="truncate">{team2Name}</span>
+                  </div>
                 </div>
-                <div className="text-sm font-bold flex items-center gap-1.5 mt-0.5">
-                  <span>{team1Name}</span>
-                  <span className="font-black">{score1} : {score2}</span>
-                  <span>{team2Name}</span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button onClick={() => onShare(rec)} className="p-1.5 rounded border opacity-70" style={{ borderColor: BORDER }} title="Поделиться">
+                    <Share2 size={14} />
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirmId(isDeleting ? null : rec.id)}
+                    className="p-1.5 rounded border opacity-70"
+                    style={{ borderColor: BORDER, color: BAD }}
+                    title="Удалить"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                  <button onClick={() => toggleExpand(rec.id)} className="p-1.5 rounded border opacity-70" style={{ borderColor: BORDER }} title="Детали">
+                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  onClick={() => onShare(rec)}
-                  className="p-1.5 rounded border opacity-70 hover:opacity-100"
-                  style={{ borderColor: BORDER }}
-                  title="Поделиться"
-                >
-                  <Share2 size={14} />
-                </button>
-                <button
-                  onClick={() => setDeleteConfirmId(isDeleting ? null : rec.id)}
-                  className="p-1.5 rounded border opacity-70 hover:opacity-100"
-                  style={{ borderColor: BORDER, color: BAD }}
-                  title="Удалить"
-                >
-                  <Trash2 size={14} />
-                </button>
-                <button
-                  onClick={() => toggleExpand(rec.id)}
-                  className="p-1.5 rounded border opacity-70 hover:opacity-100"
-                  style={{ borderColor: BORDER }}
-                  title="Детали"
-                >
-                  {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                </button>
-              </div>
+              {isDeleting && (
+                <div className="mt-2 p-2 rounded border text-xs" style={{ borderColor: BAD, backgroundColor: "#fbe9e7" }}>
+                  <div className="font-semibold mb-1.5" style={{ color: BAD }}>
+                    Удалить эту партию из истории?
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        onDelete(rec.id);
+                        setDeleteConfirmId(null);
+                      }}
+                      className="px-2.5 py-1 rounded text-white font-bold"
+                      style={{ backgroundColor: BAD }}
+                    >
+                      Удалить
+                    </button>
+                    <button onClick={() => setDeleteConfirmId(null)} className="px-2.5 py-1 rounded font-bold border" style={{ borderColor: BORDER }}>
+                      Отмена
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {isExpanded && (
+                <div className="mt-3 pt-3 border-t" style={{ borderColor: BORDER }}>
+                  <StatsPanel match={rec} throws={rec.throws || []} />
+                </div>
+              )}
             </div>
-
-            {isDeleting && (
-              <div className="mt-2 p-2 rounded border text-xs bg-red-50" style={{ borderColor: BAD }}>
-                <div className="font-semibold mb-1.5" style={{ color: BAD }}>Удалить эту партию из истории?</div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      onDelete(rec.id);
-                      setDeleteConfirmId(null);
-                    }}
-                    className="px-2.5 py-1 rounded text-white font-bold"
-                    style={{ backgroundColor: BAD }}
-                  >
-                    Удалить
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirmId(null)}
-                    className="px-2.5 py-1 rounded font-bold border"
-                    style={{ borderColor: BORDER }}
-                  >
-                    Отмена
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {isExpanded && (
-              <div className="mt-3 pt-3 border-t" style={{ borderColor: BORDER }}>
-                <StatsPanel match={rec} throws={rec.throws || []} gameScores={rec.gameScores || []} />
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
