@@ -8,6 +8,7 @@ const PINE_DARK = "#1F3A24";
 const BRONZE = "#B07A3E";
 const GOOD = "#3C7A4B";
 const BAD = "#A23B32";
+const YELLOW = "#C8860D";
 const CARD = "#F1EEE5";
 const BORDER = "#c9c2b0";
 
@@ -334,11 +335,14 @@ export default function App() {
     const t1Total = sumStats(t1Players.map((p) => calcPlayerStats(throwsList, p)));
     const t2Total = sumStats(t2Players.map((p) => calcPlayerStats(throwsList, p)));
 
+    const t1AllThrows = t1Total.tirTotal + t1Total.pointTotal;
+    const t2AllThrows = t2Total.tirTotal + t2Total.pointTotal;
+
     let text = `${record.event || "Партия"} · ${FORMATS[record.format]?.label || ""}\n`;
     text += `${t1Name} ${record.finalTeam1Score ?? 0} : ${record.finalTeam2Score ?? 0} ${t2Name}\n\n`;
-    text += `«${t1Name}» — тир: ${pct(t1Total.tirSuccess, t1Total.tirTotal)} (каро ${pct(t1Total.carreau, t1Total.tirTotal)}), пойнт: ${pct(t1Total.pointSuccess, t1Total.pointTotal)}\n`;
+    text += `«${t1Name}» — всего бросков: ${t1AllThrows} · тир: ${pct(t1Total.tirSuccess, t1Total.tirTotal)} (каро ${pct(t1Total.carreau, t1Total.tirTotal)}), пойнт: ${pct(t1Total.pointSuccess, t1Total.pointTotal)}\n`;
     t1Players.forEach((p) => (text += line(p) + "\n"));
-    text += `\n«${t2Name}» — тир: ${pct(t2Total.tirSuccess, t2Total.tirTotal)} (каро ${pct(t2Total.carreau, t2Total.tirTotal)}), пойнт: ${pct(t2Total.pointSuccess, t2Total.pointTotal)}\n`;
+    text += `\n«${t2Name}» — всего бросков: ${t2AllThrows} · тир: ${pct(t2Total.tirSuccess, t2Total.tirTotal)} (каро ${pct(t2Total.carreau, t2Total.tirTotal)}), пойнт: ${pct(t2Total.pointSuccess, t2Total.pointTotal)}\n`;
     t2Players.forEach((p) => (text += line(p) + "\n"));
 
     return text.trim();
@@ -430,7 +434,7 @@ export default function App() {
 
           <div className="mb-5">
             <div className="text-xs font-semibold uppercase tracking-wide mb-2 opacity-70">
-              Игроки «{draft.team1Name || "Команда 1"}» ({cfg.team1})
+              Игроки «{draft.team1Name || "Команда 1"}»
             </div>
             <div className="space-y-2">
               {draft.team1Players.map((p, i) => (
@@ -452,7 +456,7 @@ export default function App() {
 
           <div className="mb-8">
             <div className="text-xs font-semibold uppercase tracking-wide mb-2 opacity-70">
-              Игроки «{draft.team2Name || "Команда 2"}» ({cfg.team2})
+              Игроки «{draft.team2Name || "Команда 2"}»
             </div>
             <div className="space-y-2">
               {draft.team2Players.map((p, i) => (
@@ -747,10 +751,10 @@ export default function App() {
                   <button onClick={() => logThrow("miss")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: BAD }}>
                     Промах
                   </button>
-                  <button onClick={() => logThrow("hit")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: "#7a8c3c" }}>
+                  <button onClick={() => logThrow("hit")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: GOOD }}>
                     Попадание
                   </button>
-                  <button onClick={() => logThrow("carreau")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: GOOD }}>
+                  <button onClick={() => logThrow("carreau")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: YELLOW }}>
                     Каро
                   </button>
                 </div>
@@ -773,7 +777,15 @@ export default function App() {
                       <div key={t.id} className="flex items-center justify-between text-xs p-1.5 rounded" style={{ backgroundColor: CARD }}>
                         <div className="truncate mr-2">
                           <span className="font-bold">{t.player}</span> ({t.team === "team1" ? team1Name : team2Name}): {t.type === "point" ? "пойнт" : "тир"} —{" "}
-                          {t.result === "success" || t.result === "hit" ? "успех" : t.result === "carreau" ? "каро" : "промах"}
+                          <span
+                            className="font-bold"
+                            style={{
+                              color:
+                                t.result === "carreau" ? YELLOW : t.result === "success" || t.result === "hit" ? GOOD : BAD,
+                            }}
+                          >
+                            {t.result === "success" || t.result === "hit" ? "успех" : t.result === "carreau" ? "каро" : "промах"}
+                          </span>
                           {t.distance ? ` [${t.distance}м]` : ""}
                         </div>
                         <button onClick={() => deleteThrow(t.id)} className="opacity-40 p-0.5">
@@ -788,7 +800,7 @@ export default function App() {
         )}
 
         {/* ---- STATS TAB ---- */}
-        {tab === "stats" && <StatsPanel match={match} throws={throws} />}
+        {tab === "stats" && <StatsPanel match={match} throws={throws} gameScores={gameScores} />}
 
         {/* ---- HISTORY TAB ---- */}
         {tab === "history" && <HistoryPanel history={history} onShare={shareRecord} onDelete={deleteHistoryRecord} />}
@@ -818,19 +830,38 @@ export default function App() {
 
 // ---------------- STATS (карточный вид — оригинальный дизайн) ----------------
 
-function StatsBlock({ title, players, throws, teamTag, accent }) {
+function StatsBlock({ title, players, throws, gameScores, teamTag, accent }) {
+  const [gridMode, setGridMode] = useState(null); // null | 'team' | <playerName>
   const teamRows = players.map((p) => ({ name: p, s: calcPlayerStats(throws, p) }));
   const total = sumStats(teamRows.map((r) => r.s));
   const zones = calcDistanceZones(throws, teamTag);
+  const teamThrows = throws.filter((t) => t.team === teamTag);
+
   return (
     <div className="mb-6">
-      <div className="text-xs font-bold uppercase tracking-wide mb-2 pb-1 border-b-2" style={{ color: accent, borderColor: accent }}>
+      <button
+        onClick={() => setGridMode(gridMode === "team" ? null : "team")}
+        className="w-full flex items-center justify-between text-xs font-bold uppercase tracking-wide mb-2 pb-1 border-b-2"
+        style={{ color: accent, borderColor: accent }}
+      >
         {title}
-      </div>
+        {gridMode === "team" ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+      {gridMode === "team" && <ThrowGrid throws={teamThrows} allThrows={throws} gameScores={gameScores} />}
       <div className="space-y-2 mb-3">
         <PlayerCard name="Итого" s={total} bold accent={accent} />
         {teamRows.map((r) => (
-          <PlayerCard key={r.name} name={r.name} s={r.s} accent={accent} />
+          <React.Fragment key={r.name}>
+            <PlayerCard
+              name={r.name}
+              s={r.s}
+              accent={accent}
+              clickable
+              active={gridMode === r.name}
+              onClick={() => setGridMode(gridMode === r.name ? null : r.name)}
+            />
+            {gridMode === r.name && <ThrowGrid throws={throws.filter((t) => t.player === r.name)} allThrows={throws} gameScores={gameScores} />}
+          </React.Fragment>
         ))}
       </div>
       <div className="text-[11px] font-semibold uppercase tracking-wide mb-1.5 opacity-60">По дистанции</div>
@@ -856,15 +887,95 @@ function StatsBlock({ title, players, throws, teamTag, accent }) {
   );
 }
 
-function PlayerCard({ name, s, bold, accent }) {
+function PlayerCard({ name, s, bold, accent, clickable, active, onClick }) {
   return (
-    <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: bold ? accent : "#dcd6c8" }}>
-      <div className={`text-sm mb-2 ${bold ? "font-black" : "font-bold"}`}>{name}</div>
+    <div className="rounded-lg border-2 p-3 bg-white" style={{ borderColor: active ? accent : bold ? accent : "#dcd6c8" }}>
+      {clickable ? (
+        <button onClick={onClick} className="w-full flex items-center justify-between mb-2">
+          <span className="text-sm font-bold">{name}</span>
+          {active ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      ) : (
+        <div className={`text-sm mb-2 ${bold ? "font-black" : "font-bold"}`}>{name}</div>
+      )}
       <div className="grid grid-cols-2 gap-2 text-xs">
         <StatCell label="Тир" value={`${s.tirSuccess}/${s.tirTotal}`} pctVal={pct(s.tirSuccess, s.tirTotal)} />
         <StatCell label="Каро" value={`${s.carreau}/${s.tirTotal}`} pctVal={pct(s.carreau, s.tirTotal)} />
         <StatCell label="Пойнт" value={`${s.pointSuccess}/${s.pointTotal}`} pctVal={pct(s.pointSuccess, s.pointTotal)} />
         <StatCell label="1й пойнт" value={`${s.firstPointSuccess}/${s.firstPointTotal}`} pctVal={pct(s.firstPointSuccess, s.firstPointTotal)} />
+      </div>
+    </div>
+  );
+}
+
+// Сетка бросков: колонка = один бросок в хронологическом порядке.
+// Пойнт и тир — в отдельных строках; пустая ячейка помечена буквой типа, который выпал в этой колонке.
+function ThrowGrid({ throws, allThrows, gameScores }) {
+  const geims = [...new Set(throws.map((t) => t.geim))].sort((a, b) => a - b);
+
+  if (geims.length === 0) {
+    return <div className="text-xs italic opacity-50 px-2 py-3">Нет бросков</div>;
+  }
+
+  const cellColor = (t) => {
+    if (!t) return null;
+    if (t.type === "point") return t.result === "success" ? GOOD : BAD;
+    if (t.result === "carreau") return YELLOW;
+    return t.result === "hit" ? GOOD : BAD;
+  };
+
+  const startScoreFor = (g) => {
+    if (g <= 1) return { team1: 0, team2: 0 };
+    const prev = (gameScores || []).find((s) => s.geim === g - 1);
+    return prev ? { team1: prev.team1Score, team2: prev.team2Score } : { team1: 0, team2: 0 };
+  };
+
+  return (
+    <div className="mb-3 rounded-lg p-2 overflow-x-auto" style={{ backgroundColor: CARD }}>
+      <div className="inline-flex gap-3">
+        {geims.map((g) => {
+          const geimThrows = throws.filter((t) => t.geim === g);
+          const firstOfGeim = allThrows.find((t) => t.geim === g);
+          const dist = firstOfGeim && firstOfGeim.distance ? `${firstOfGeim.distance}м` : "—";
+          const score = startScoreFor(g);
+          return (
+            <div key={g} className="flex flex-col items-center shrink-0">
+              <div className="text-[9px] font-bold text-center leading-tight mb-1 whitespace-nowrap">
+                {g}. {score.team1}:{score.team2} {dist}
+              </div>
+              <div className="flex flex-col gap-1">
+                <div className="flex gap-1">
+                  {geimThrows.map((t, i) => {
+                    const c = t.type === "point" ? cellColor(t) : null;
+                    return (
+                      <div
+                        key={i}
+                        className="w-4 h-4 rounded-sm flex items-center justify-center"
+                        style={{ backgroundColor: c || "transparent", border: c ? "none" : `1px solid ${BORDER}` }}
+                      >
+                        {!c && <span className="text-[8px] font-bold opacity-40">п</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-1">
+                  {geimThrows.map((t, i) => {
+                    const c = t.type === "tir" ? cellColor(t) : null;
+                    return (
+                      <div
+                        key={i}
+                        className="w-4 h-4 rounded-sm flex items-center justify-center"
+                        style={{ backgroundColor: c || "transparent", border: c ? "none" : `1px solid ${BORDER}` }}
+                      >
+                        {!c && <span className="text-[8px] font-bold opacity-40">т</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -882,18 +993,19 @@ function StatCell({ label, value, pctVal }) {
   );
 }
 
-function StatsPanel({ match, throws }) {
+function StatsPanel({ match, throws, gameScores }) {
   const team1Name = match.team1Name || "Команда 1";
   const team2Name = match.team2Name || "Команда 2";
   const team1Players = match.team1Players || [];
   const team2Players = match.team2Players || [];
   const safeThrows = throws || [];
+  const safeScores = gameScores || [];
   return (
     <div>
       <h2 className="text-xl font-black mb-1">Обзор</h2>
       <div className="text-xs opacity-60 mb-4">{FORMATS[match.format]?.label}</div>
-      <StatsBlock title={team1Name} players={team1Players} throws={safeThrows} teamTag="team1" accent={PINE} />
-      <StatsBlock title={team2Name} players={team2Players} throws={safeThrows} teamTag="team2" accent={BRONZE} />
+      <StatsBlock title={team1Name} players={team1Players} throws={safeThrows} gameScores={safeScores} teamTag="team1" accent={PINE} />
+      <StatsBlock title={team2Name} players={team2Players} throws={safeThrows} gameScores={safeScores} teamTag="team2" accent={BRONZE} />
     </div>
   );
 }
@@ -982,7 +1094,7 @@ function HistoryPanel({ history, onShare, onDelete }) {
 
               {isExpanded && (
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: BORDER }}>
-                  <StatsPanel match={rec} throws={rec.throws || []} />
+                  <StatsPanel match={rec} throws={rec.throws || []} gameScores={rec.gameScores || []} />
                 </div>
               )}
             </div>
@@ -992,3 +1104,4 @@ function HistoryPanel({ history, onShare, onDelete }) {
     </div>
   );
 }
+
