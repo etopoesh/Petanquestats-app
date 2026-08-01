@@ -24,6 +24,7 @@ export default function App() {
   const [selTeam, setSelTeam] = useState(null);
   const [selPlayer, setSelPlayer] = useState(null);
   const [selType, setSelType] = useState(null);
+  const [selTirAuBut, setSelTirAuBut] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [endGeimOpen, setEndGeimOpen] = useState(false);
   const [endGeimScores, setEndGeimScores] = useState({ team1: 0, team2: 0 });
@@ -85,11 +86,13 @@ export default function App() {
       type: selType,
       result,
       firstPoint: isFirst,
+      tirAuBut: selType === "tir" ? selTirAuBut : false,
     };
     const next = [...throws, entry];
     setThrows(next);
     persistCurrent(match, geimState, next, gameScores);
     setSelType(null);
+    setSelTirAuBut(false);
 
     const cfg = FORMATS[match.format];
     const usedNow = next.filter((t) => t.player === selPlayer && t.geim === geimState.geim).length;
@@ -126,6 +129,7 @@ export default function App() {
     setSelTeam(null);
     setSelPlayer(null);
     setSelType(null);
+    setSelTirAuBut(false);
     if (t1 >= 13 || t2 >= 13) setThirteenPrompt({ team1: t1, team2: t2 });
   };
 
@@ -280,6 +284,8 @@ export default function App() {
             setSelPlayer={setSelPlayer}
             selType={selType}
             setSelType={setSelType}
+            selTirAuBut={selTirAuBut}
+            setSelTirAuBut={setSelTirAuBut}
             logThrow={logThrow}
             undoLast={undoLast}
             deleteThrow={deleteThrow}
