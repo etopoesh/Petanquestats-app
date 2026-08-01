@@ -18,6 +18,8 @@ export function calcPlayerStats(throws, playerName) {
   const pointSuccess = points.filter((t) => t.result === "success").length;
   const firstPoints = rows.filter((t) => t.firstPoint);
   const firstPointSuccess = firstPoints.filter((t) => t.result === "success").length;
+  const tirsAuBut = tirs.filter((t) => t.tirAuBut);
+  const tirAuButSuccess = tirsAuBut.filter((t) => t.result === "hit").length;
   return {
     tirTotal: tirs.length,
     tirSuccess,
@@ -26,6 +28,8 @@ export function calcPlayerStats(throws, playerName) {
     pointSuccess,
     firstPointTotal: firstPoints.length,
     firstPointSuccess,
+    tirAuButTotal: tirsAuBut.length,
+    tirAuButSuccess,
   };
 }
 
@@ -39,8 +43,20 @@ export function sumStats(list) {
       pointSuccess: acc.pointSuccess + s.pointSuccess,
       firstPointTotal: acc.firstPointTotal + s.firstPointTotal,
       firstPointSuccess: acc.firstPointSuccess + s.firstPointSuccess,
+      tirAuButTotal: acc.tirAuButTotal + (s.tirAuButTotal || 0),
+      tirAuButSuccess: acc.tirAuButSuccess + (s.tirAuButSuccess || 0),
     }),
-    { tirTotal: 0, tirSuccess: 0, carreau: 0, pointTotal: 0, pointSuccess: 0, firstPointTotal: 0, firstPointSuccess: 0 }
+    {
+      tirTotal: 0,
+      tirSuccess: 0,
+      carreau: 0,
+      pointTotal: 0,
+      pointSuccess: 0,
+      firstPointTotal: 0,
+      firstPointSuccess: 0,
+      tirAuButTotal: 0,
+      tirAuButSuccess: 0,
+    }
   );
 }
 
