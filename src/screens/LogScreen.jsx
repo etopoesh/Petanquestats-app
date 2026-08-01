@@ -15,6 +15,8 @@ export default function LogScreen({
   setSelPlayer,
   selType,
   setSelType,
+  selTirAuBut,
+  setSelTirAuBut,
   logThrow,
   undoLast,
   deleteThrow,
@@ -107,6 +109,7 @@ export default function LogScreen({
               setSelTeam("team1");
               setSelPlayer(null);
               setSelType(null);
+              setSelTirAuBut(false);
             }}
             className="py-2.5 rounded-md font-bold text-sm border-2 truncate px-1"
             style={{
@@ -122,6 +125,7 @@ export default function LogScreen({
               setSelTeam("team2");
               setSelPlayer(null);
               setSelType(null);
+              setSelTirAuBut(false);
             }}
             className="py-2.5 rounded-md font-bold text-sm border-2 truncate px-1"
             style={{
@@ -148,6 +152,7 @@ export default function LogScreen({
                   onClick={() => {
                     setSelPlayer(p);
                     setSelType(null);
+                    setSelTirAuBut(false);
                   }}
                   className="py-2.5 px-3 rounded-md font-semibold text-sm border-2 text-left"
                   style={{
@@ -169,7 +174,10 @@ export default function LogScreen({
           <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Тип броска</div>
           <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => setSelType("point")}
+              onClick={() => {
+                setSelType("point");
+                setSelTirAuBut(false);
+              }}
               className="py-2.5 rounded-md font-bold text-sm border-2"
               style={{
                 borderColor: selType === "point" ? PINE : BORDER,
@@ -180,7 +188,10 @@ export default function LogScreen({
               Пойнт
             </button>
             <button
-              onClick={() => setSelType("tir")}
+              onClick={() => {
+                setSelType("tir");
+                setSelTirAuBut(false);
+              }}
               className="py-2.5 rounded-md font-bold text-sm border-2"
               style={{
                 borderColor: selType === "tir" ? PINE : BORDER,
@@ -210,17 +221,36 @@ export default function LogScreen({
 
       {selType === "tir" && (
         <div className="mb-4">
+          <button
+            onClick={() => setSelTirAuBut(!selTirAuBut)}
+            className="w-full flex items-center gap-2 py-2 px-3 rounded-md font-semibold text-xs border-2 mb-2"
+            style={{
+              borderColor: selTirAuBut ? PINE : BORDER,
+              backgroundColor: selTirAuBut ? PINE : "white",
+              color: selTirAuBut ? "white" : INK,
+            }}
+          >
+            <span
+              className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
+              style={{ borderColor: selTirAuBut ? "white" : BORDER }}
+            >
+              {selTirAuBut && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+            </span>
+            Тир о бю (по кошонету)
+          </button>
           <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Результат</div>
-          <div className="grid grid-cols-3 gap-2">
+          <div className={`grid gap-2 ${selTirAuBut ? "grid-cols-2" : "grid-cols-3"}`}>
             <button onClick={() => logThrow("miss")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: BAD }}>
               Промах
             </button>
             <button onClick={() => logThrow("hit")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: GOOD }}>
               Попадание
             </button>
-            <button onClick={() => logThrow("carreau")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: YELLOW }}>
-              Каро
-            </button>
+            {!selTirAuBut && (
+              <button onClick={() => logThrow("carreau")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: YELLOW }}>
+                Каро
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -249,6 +279,7 @@ export default function LogScreen({
                     >
                       {t.result === "success" || t.result === "hit" ? "успех" : t.result === "carreau" ? "каро" : "промах"}
                     </span>
+                    {t.tirAuBut ? " · по кошонету" : ""}
                     {t.distance ? ` [${t.distance}м]` : ""}
                   </div>
                   <button onClick={() => deleteThrow(t.id)} className="opacity-40 p-0.5">
