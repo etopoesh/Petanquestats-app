@@ -15,7 +15,13 @@ export default function BackupControls() {
     const res = await exportBackup();
     setBusy(false);
     if (res.ok) {
-      setStatus({ type: "ok", text: res.method === "share" ? "Готово — выберите, куда сохранить файл" : "Файл скачан" });
+      if (res.method === "filesystem+share") {
+        setStatus({ type: "ok", text: "Файл сохранён — выберите, куда отправить" });
+      } else if (res.method === "filesystem-only") {
+        setStatus({ type: "ok", text: `Сохранено: ${res.path}` });
+      } else {
+        setStatus({ type: "ok", text: "Файл скачан" });
+      }
     } else {
       setStatus({ type: "error", text: "Не получилось создать копию" });
     }
