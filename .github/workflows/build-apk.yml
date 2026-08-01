@@ -31,7 +31,8 @@ jobs:
         run: |
           npm install
           npm install -D @tailwindcss/postcss
-
+          npm install @capacitor/filesystem @capacitor/share
+          
       - name: Build Web Assets
         run: npm run build
 
