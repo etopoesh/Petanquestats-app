@@ -2,6 +2,9 @@
 // и восстановление из такого файла. Работает поверх storage.js — не трогает
 // формат данных, просто упаковывает то, что там уже лежит.
 
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { loadCurrentMatch, saveCurrentMatch, loadHistory, saveHistory } from "./storage";
 
 const BACKUP_VERSION = 1;
@@ -22,27 +25,44 @@ function fileName() {
   return `petanque-backup-${d}.json`;
 }
 
-// Экспорт: пробуем системное "поделиться файлом" (сохранить в Файлы/Диск/переслать),
-// если недоступно — обычная скачиваемая ссылка.
+// Экспорт: на телефоне (Capacitor) — реальный файл в Documents + системное "поделиться".
+// В обычном браузере (например, при тестировании) — старый способ через скачивание.
 export async function exportBackup() {
   const payload = buildBackupPayload();
   const json = JSON.stringify(payload, null, 2);
-  const blob = new Blob([json], { type: "application/json" });
   const name = fileName();
 
-  if (navigator.canShare && navigator.share) {
+  if (Capacitor.isNativePlatform()) {
     try {
-      const file = new File([blob], name, { type: "application/json" });
-      if (navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: "Резервная копия — петанк" });
-        return { ok: true, method: "share" };
+      const written = await Filesystem.writeFile({
+        path: name,
+        data: json,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+      });
+
+      try {
+        await Share.share({
+          title: "Резервная копия — петанк",
+          text: "Резервная копия статистики петанк",
+          url: written.uri,
+          dialogTitle: "Сохранить или отправить резервную копию",
+        });
+      } catch (shareErr) {
+        // Поделиться не получилось (например, отменили) — файл всё равно сохранён
+        return { ok: true, method: "filesystem-only", path: "Documents/" + name };
       }
+
+      return { ok: true, method: "filesystem+share", path: "Documents/" + name };
     } catch (e) {
-      // пользователь закрыл окно шеринга — не ошибка, просто не мешаем
+      console.error("exportBackup (native) failed", e);
+      return { ok: false, error: e };
     }
   }
 
+  // Веб-фолбэк (не в приложении, а в обычном браузере)
   try {
+    const blob = new Blob([json], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -53,7 +73,7 @@ export async function exportBackup() {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     return { ok: true, method: "download" };
   } catch (e) {
-    console.error("exportBackup failed", e);
+    console.error("exportBackup (web) failed", e);
     return { ok: false, error: e };
   }
 }
