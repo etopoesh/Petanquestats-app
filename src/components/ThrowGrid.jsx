@@ -51,10 +51,11 @@ export default function ThrowGrid({ throws, allThrows, gameScores }) {
                     return (
                       <div
                         key={i}
-                        className="w-4 h-4 rounded-sm flex items-center justify-center"
+                        className="w-4 h-4 rounded-sm flex items-center justify-center relative"
                         style={{ backgroundColor: c || "transparent", border: c ? "none" : `1px solid ${BORDER}` }}
                       >
                         {!c && <span className="text-[8px] font-bold opacity-40">т</span>}
+                        {c && t.tirAuBut && <span className="w-1.5 h-1.5 rounded-full bg-black" />}
                       </div>
                     );
                   })}

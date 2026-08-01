@@ -18,6 +18,11 @@ export default function PlayerCard({ name, s, bold, accent, clickable, active, o
         <StatCell label="Каро" value={`${s.carreau}/${s.tirTotal}`} pctVal={pct(s.carreau, s.tirTotal)} />
         <StatCell label="Пойнт" value={`${s.pointSuccess}/${s.pointTotal}`} pctVal={pct(s.pointSuccess, s.pointTotal)} />
         <StatCell label="1й пойнт" value={`${s.firstPointSuccess}/${s.firstPointTotal}`} pctVal={pct(s.firstPointSuccess, s.firstPointTotal)} />
+        {s.tirAuButTotal > 0 && (
+          <div className="col-span-2">
+            <StatCell label="Тир о бю" value={`${s.tirAuButSuccess}/${s.tirAuButTotal}`} pctVal={pct(s.tirAuButSuccess, s.tirAuButTotal)} />
+          </div>
+        )}
       </div>
     </div>
   );
