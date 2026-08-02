@@ -11,14 +11,15 @@ export function pct(n, d) {
 
 export function calcPlayerStats(throws, playerName) {
   const rows = throws.filter((t) => t.player === playerName);
-  const tirs = rows.filter((t) => t.type === "tir");
+  // Удар по кошонету — отдельная категория, в общий % тира не входит.
+  const tirs = rows.filter((t) => t.type === "tir" && !t.tirAuBut);
   const points = rows.filter((t) => t.type === "point");
   const tirSuccess = tirs.filter((t) => t.result === "hit" || t.result === "carreau").length;
   const carreau = tirs.filter((t) => t.result === "carreau").length;
   const pointSuccess = points.filter((t) => t.result === "success").length;
   const firstPoints = rows.filter((t) => t.firstPoint);
   const firstPointSuccess = firstPoints.filter((t) => t.result === "success").length;
-  const tirsAuBut = tirs.filter((t) => t.tirAuBut);
+  const tirsAuBut = rows.filter((t) => t.type === "tir" && t.tirAuBut);
   const tirAuButSuccess = tirsAuBut.filter((t) => t.result === "hit").length;
   return {
     tirTotal: tirs.length,
@@ -77,6 +78,7 @@ export function calcDistanceZones(throws, teamTag) {
     .forEach((t) => {
       const z = zoneFor(t.distance);
       if (!z || (t.type !== "point" && t.type !== "tir")) return;
+      if (t.type === "tir" && t.tirAuBut) return; // отдельная категория, сюда не мешаем
       const bucket = out[t.type][z.key];
       bucket.total++;
       const ok = t.type === "point" ? t.result === "success" : t.result === "hit" || t.result === "carreau";
