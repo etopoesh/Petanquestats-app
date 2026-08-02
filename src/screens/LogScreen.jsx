@@ -1,5 +1,6 @@
 import { RotateCcw, X } from "lucide-react";
 import { PINE, PINE_DARK, BRONZE, GOOD, BAD, YELLOW, CARD, BORDER, INK } from "../constants";
+import { useLang } from "../i18n/LangContext";
 
 export default function LogScreen({
   match,
@@ -28,46 +29,48 @@ export default function LogScreen({
   confirmEndGeim,
   setConfirmEndMatch,
 }) {
+  const { t } = useLang();
+
   return (
     <>
       <div className="rounded-lg border-2 p-3 mb-3 bg-white" style={{ borderColor: BORDER }}>
         <div className="grid grid-cols-3 gap-2 items-end">
           <div>
-            <div className="text-[10px] uppercase tracking-wide opacity-60">Гейм</div>
+            <div className="text-[10px] uppercase tracking-wide opacity-60">{t("geim")}</div>
             <div className="text-xl font-black">{geimState.geim}</div>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide opacity-60">Счёт</div>
+            <div className="text-[10px] uppercase tracking-wide opacity-60">{t("score")}</div>
             <div className="text-xl font-black">
               {geimState.team1Score}:{geimState.team2Score}
             </div>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide opacity-60">Дистанция</div>
+            <div className="text-[10px] uppercase tracking-wide opacity-60">{t("distance")}</div>
             <input
               value={geimState.distance}
               onChange={(e) => updateGeim({ distance: e.target.value })}
-              placeholder="м"
+              placeholder={t("unit_m")}
               className="w-full mt-0.5 px-1.5 py-1 rounded border text-sm font-bold text-center"
               style={{ borderColor: BORDER }}
             />
           </div>
         </div>
-        <div className="text-[10px] opacity-50 mt-1.5">Если кошонет сдвинули — впишите новую дистанцию, гейм продолжается без сброса.</div>
+        <div className="text-[10px] opacity-50 mt-1.5">{t("distance_hint")}</div>
       </div>
 
       {!endGeimOpen ? (
         <div className="grid grid-cols-2 gap-2 mb-4">
           <button onClick={openEndGeim} className="py-2.5 rounded-md font-bold text-white text-sm" style={{ backgroundColor: PINE }}>
-            Конец гейма
+            {t("end_geim_btn")}
           </button>
           <button onClick={() => setConfirmEndMatch(true)} className="py-2.5 rounded-md font-bold text-sm border-2" style={{ borderColor: BAD, color: BAD }}>
-            Конец партии
+            {t("end_match_btn")}
           </button>
         </div>
       ) : (
         <div className="rounded-lg border-2 p-3 mb-4" style={{ borderColor: PINE, backgroundColor: "#dfe6df" }}>
-          <div className="text-xs font-bold uppercase tracking-wide mb-2">Счёт после этого гейма</div>
+          <div className="text-xs font-bold uppercase tracking-wide mb-2">{t("score_after_geim")}</div>
           <div className="grid grid-cols-2 gap-2 mb-3">
             <div>
               <div className="text-[10px] uppercase tracking-wide opacity-60 truncate">{team1Name}</div>
@@ -92,17 +95,17 @@ export default function LogScreen({
           </div>
           <div className="flex gap-2">
             <button onClick={confirmEndGeim} className="flex-1 py-2 rounded-md font-bold text-white text-sm" style={{ backgroundColor: PINE }}>
-              Подтвердить
+              {t("confirm")}
             </button>
             <button onClick={() => setEndGeimOpen(false)} className="px-3 py-2 rounded-md font-bold text-sm border-2" style={{ borderColor: BORDER }}>
-              Отмена
+              {t("cancel")}
             </button>
           </div>
         </div>
       )}
 
       <div className="mb-3">
-        <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Команда</div>
+        <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">{t("team")}</div>
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => {
@@ -141,9 +144,9 @@ export default function LogScreen({
 
       {selTeam && (
         <div className="mb-3">
-          <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Игрок</div>
+          <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">{t("player")}</div>
           {teamPlayers.length === 0 ? (
-            <div className="text-xs italic opacity-50 px-1">Все шары этой команды в гейме разыграны</div>
+            <div className="text-xs italic opacity-50 px-1">{t("all_balls_used")}</div>
           ) : (
             <div className="grid grid-cols-1 gap-2">
               {teamPlayers.map((p) => (
@@ -171,7 +174,7 @@ export default function LogScreen({
 
       {selPlayer && (
         <div className="mb-3">
-          <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Тип броска</div>
+          <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">{t("throw_type")}</div>
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => {
@@ -185,7 +188,7 @@ export default function LogScreen({
                 color: selType === "point" ? "white" : INK,
               }}
             >
-              Пойнт
+              {t("point")}
             </button>
             <button
               onClick={() => {
@@ -199,7 +202,7 @@ export default function LogScreen({
                 color: selType === "tir" ? "white" : INK,
               }}
             >
-              Тир
+              {t("tir")}
             </button>
           </div>
         </div>
@@ -207,13 +210,13 @@ export default function LogScreen({
 
       {selType === "point" && (
         <div className="mb-4">
-          <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Результат</div>
+          <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">{t("result")}</div>
           <div className="grid grid-cols-2 gap-2">
             <button onClick={() => logThrow("success")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: GOOD }}>
-              Успех
+              {t("success")}
             </button>
             <button onClick={() => logThrow("fail")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: BAD }}>
-              Неуспех
+              {t("fail")}
             </button>
           </div>
         </div>
@@ -223,32 +226,26 @@ export default function LogScreen({
         <div className="mb-4">
           <button
             onClick={() => setSelTirAuBut(!selTirAuBut)}
-            className="w-full flex items-center gap-2 py-2 px-3 rounded-md font-semibold text-xs border-2 mb-2"
+            className="w-full py-3 px-3 rounded-md font-bold text-sm border-2 mb-2"
             style={{
               borderColor: selTirAuBut ? PINE : BORDER,
               backgroundColor: selTirAuBut ? PINE : "white",
               color: selTirAuBut ? "white" : INK,
             }}
           >
-            <span
-              className="w-3.5 h-3.5 rounded-sm border-2 flex items-center justify-center shrink-0"
-              style={{ borderColor: selTirAuBut ? "white" : BORDER }}
-            >
-              {selTirAuBut && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-            </span>
-            Тир о бю (по кошонету)
+            {t("tir_au_but_btn")}
           </button>
-          <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">Результат</div>
+          <div className="text-xs font-semibold uppercase tracking-wide mb-1.5 opacity-70">{t("result")}</div>
           <div className={`grid gap-2 ${selTirAuBut ? "grid-cols-2" : "grid-cols-3"}`}>
             <button onClick={() => logThrow("miss")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: BAD }}>
-              Промах
+              {t("miss")}
             </button>
             <button onClick={() => logThrow("hit")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: GOOD }}>
-              Попадание
+              {t("hit")}
             </button>
             {!selTirAuBut && (
               <button onClick={() => logThrow("carreau")} className="py-4 rounded-md font-bold text-white text-sm" style={{ backgroundColor: YELLOW }}>
-                Каро
+                {t("carreau")}
               </button>
             )}
           </div>
@@ -258,31 +255,31 @@ export default function LogScreen({
       {throws.length > 0 && (
         <div className="mt-4 rounded-lg border-2 p-3 bg-white" style={{ borderColor: BORDER }}>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-bold uppercase opacity-70">Броски текущей партии</div>
+            <div className="text-xs font-bold uppercase opacity-70">{t("throws_current")}</div>
             <button onClick={undoLast} className="flex items-center gap-1 text-xs font-semibold opacity-70">
-              <RotateCcw size={13} /> Отмена
+              <RotateCcw size={13} /> {t("undo_last")}
             </button>
           </div>
           <div className="space-y-1.5 max-h-48 overflow-y-auto">
             {throws
               .slice()
               .reverse()
-              .map((t) => (
-                <div key={t.id} className="flex items-center justify-between text-xs p-1.5 rounded" style={{ backgroundColor: CARD }}>
+              .map((tw) => (
+                <div key={tw.id} className="flex items-center justify-between text-xs p-1.5 rounded" style={{ backgroundColor: CARD }}>
                   <div className="truncate mr-2">
-                    <span className="font-bold">{t.player}</span> ({t.team === "team1" ? team1Name : team2Name}): {t.type === "point" ? "пойнт" : "тир"} —{" "}
+                    <span className="font-bold">{tw.player}</span> ({tw.team === "team1" ? team1Name : team2Name}): {tw.type === "point" ? t("point").toLowerCase() : t("tir").toLowerCase()} —{" "}
                     <span
                       className="font-bold"
                       style={{
-                        color: t.result === "carreau" ? YELLOW : t.result === "success" || t.result === "hit" ? GOOD : BAD,
+                        color: tw.result === "carreau" ? YELLOW : tw.result === "success" || tw.result === "hit" ? GOOD : BAD,
                       }}
                     >
-                      {t.result === "success" || t.result === "hit" ? "успех" : t.result === "carreau" ? "каро" : "промах"}
+                      {tw.result === "success" || tw.result === "hit" ? t("success").toLowerCase() : tw.result === "carreau" ? t("carreau").toLowerCase() : t("fail").toLowerCase()}
                     </span>
-                    {t.tirAuBut ? " · по кошонету" : ""}
-                    {t.distance ? ` [${t.distance}м]` : ""}
+                    {tw.tirAuBut ? t("by_jack_suffix") : ""}
+                    {tw.distance ? ` [${tw.distance}${t("unit_m")}]` : ""}
                   </div>
-                  <button onClick={() => deleteThrow(t.id)} className="opacity-40 p-0.5">
+                  <button onClick={() => deleteThrow(tw.id)} className="opacity-40 p-0.5">
                     <X size={13} />
                   </button>
                 </div>
