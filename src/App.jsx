@@ -5,14 +5,18 @@ import { FORMATS, PAPER, INK, PINE, BRONZE, BAD, BORDER } from "./constants";
 import { emptyDraft } from "./utils/match";
 import { loadCurrentMatch, saveCurrentMatch, loadHistory, saveHistory } from "./services/storage";
 import { shareRecord } from "./services/share";
+import { addMatchToHistory } from "./services/backup";
+import { LangProvider, useLang } from "./i18n/LangContext";
 
 import Footer from "./components/Footer";
 import StatsPanel from "./components/StatsPanel";
 import HistoryPanel from "./components/HistoryPanel";
+import LangSwitcher from "./components/LangSwitcher";
 import SetupScreen from "./screens/SetupScreen";
 import LogScreen from "./screens/LogScreen";
 
-export default function App() {
+function AppInner() {
+  const { t } = useLang();
   const [match, setMatch] = useState(null);
   const [geimState, setGeimState] = useState({ geim: 1, team1Score: 0, team2Score: 0, distance: "" });
   const [throws, setThrows] = useState([]);
@@ -30,6 +34,7 @@ export default function App() {
   const [endGeimScores, setEndGeimScores] = useState({ team1: 0, team2: 0 });
   const [thirteenPrompt, setThirteenPrompt] = useState(null);
   const [confirmEndMatch, setConfirmEndMatch] = useState(false);
+  const [jackOutPrompt, setJackOutPrompt] = useState(false);
   const saveTimer = useRef(null);
 
   useEffect(() => {
@@ -52,10 +57,10 @@ export default function App() {
   const startMatch = () => {
     const cleaned = {
       ...draft,
-      team1Players: draft.team1Players.map((p, i) => p.trim() || `Игрок ${i + 1}`),
-      team2Players: draft.team2Players.map((p, i) => p.trim() || `Игрок ${i + 1}`),
-      team1Name: draft.team1Name.trim() || "Команда 1",
-      team2Name: draft.team2Name.trim() || "Команда 2",
+      team1Players: draft.team1Players.map((p, i) => p.trim() || `${t("player")} ${i + 1}`),
+      team2Players: draft.team2Players.map((p, i) => p.trim() || `${t("player")} ${i + 1}`),
+      team1Name: draft.team1Name.trim() || t("default_team1"),
+      team2Name: draft.team2Name.trim() || t("default_team2"),
     };
     const gs = { geim: 1, team1Score: 0, team2Score: 0, distance: "" };
     setMatch(cleaned);
@@ -72,11 +77,10 @@ export default function App() {
     persistCurrent(match, next, throws, gameScores);
   };
 
-  const ballsUsed = (player) => throws.filter((t) => t.player === player && t.geim === geimState.geim).length;
+  const ballsUsed = (player) => throws.filter((tw) => tw.player === player && tw.geim === geimState.geim).length;
 
-  const logThrow = (result) => {
-    if (!selTeam || !selPlayer || !selType) return;
-    const isFirst = throws.filter((t) => t.geim === geimState.geim).length === 0;
+  const commitThrow = (result, extra = {}) => {
+    const isFirst = throws.filter((tw) => tw.geim === geimState.geim).length === 0;
     const entry = {
       id: Date.now() + Math.random(),
       geim: geimState.geim,
@@ -87,6 +91,7 @@ export default function App() {
       result,
       firstPoint: isFirst,
       tirAuBut: selType === "tir" ? selTirAuBut : false,
+      ...extra,
     };
     const next = [...throws, entry];
     setThrows(next);
@@ -95,8 +100,37 @@ export default function App() {
     setSelTirAuBut(false);
 
     const cfg = FORMATS[match.format];
-    const usedNow = next.filter((t) => t.player === selPlayer && t.geim === geimState.geim).length;
+    const usedNow = next.filter((tw) => tw.player === selPlayer && tw.geim === geimState.geim).length;
     if (usedNow >= cfg.balls) setSelPlayer(null);
+  };
+
+  // Попадание тира по кошонету — сперва спрашиваем, не выбило ли кошонет в аут
+  // (в этом случае гейм аннулируется и переигрывается).
+  const logThrow = (result) => {
+    if (!selTeam || !selPlayer || !selType) return;
+    if (selType === "tir" && selTirAuBut && result === "hit") {
+      setJackOutPrompt(true);
+      return;
+    }
+    commitThrow(result);
+  };
+
+  const confirmJackOut = () => {
+    // Аннулировать гейм: убираем все броски текущего гейма, номер гейма и счёт не меняются,
+    // дистанция сбрасывается — кошонет будет брошен заново.
+    const next = throws.filter((tw) => tw.geim !== geimState.geim);
+    setThrows(next);
+    const nextGeim = { ...geimState, distance: "" };
+    setGeimState(nextGeim);
+    persistCurrent(match, nextGeim, next, gameScores);
+    setJackOutPrompt(false);
+    setSelType(null);
+    setSelTirAuBut(false);
+  };
+
+  const declineJackOut = () => {
+    commitThrow("hit", { cochonnetOut: false });
+    setJackOutPrompt(false);
   };
 
   const undoLast = () => {
@@ -106,7 +140,7 @@ export default function App() {
   };
 
   const deleteThrow = (id) => {
-    const next = throws.filter((t) => t.id !== id);
+    const next = throws.filter((tw) => tw.id !== id);
     setThrows(next);
     persistCurrent(match, geimState, next, gameScores);
   };
@@ -164,6 +198,13 @@ export default function App() {
     saveHistory(nextHistory);
   };
 
+  // Импорт партии из отдельного файла — добавляет, ничего не стирает.
+  const importMatchRecord = (record) => {
+    const nextHistory = addMatchToHistory(record, history);
+    setHistory(nextHistory);
+    saveHistory(nextHistory);
+  };
+
   const resetMatch = () => {
     setMatch(null);
     setThrows([]);
@@ -179,7 +220,7 @@ export default function App() {
     return (
       <div style={{ backgroundColor: PAPER }} className="flex items-center justify-center min-h-screen">
         <div style={{ color: INK }} className="text-sm tracking-wide">
-          загрузка…
+          {t("loading")}
         </div>
       </div>
     );
@@ -196,13 +237,14 @@ export default function App() {
         startMatch={startMatch}
         shareRecord={shareRecord}
         deleteHistoryRecord={deleteHistoryRecord}
+        importMatchRecord={importMatchRecord}
       />
     );
   }
 
   const cfg = FORMATS[match.format];
-  const team1Name = match.team1Name || "Команда 1";
-  const team2Name = match.team2Name || "Команда 2";
+  const team1Name = match.team1Name || t("default_team1");
+  const team2Name = match.team2Name || t("default_team2");
   const team1Players = match.team1Players || [];
   const team2Players = match.team2Players || [];
   const rawTeamPlayers = selTeam === "team1" ? team1Players : selTeam === "team2" ? team2Players : [];
@@ -214,26 +256,44 @@ export default function App() {
         <div className="flex items-baseline justify-between mb-3">
           <div>
             <div className="text-[11px] tracking-[0.2em] uppercase" style={{ color: BRONZE }}>
-              {cfg.label} {match.event ? `· ${match.event}` : ""}
+              {t(cfg.labelKey)} {match.event ? `· ${match.event}` : ""}
             </div>
             <h1 className="text-lg font-black" style={{ letterSpacing: "-0.02em" }}>
-              {team1Name} <span className="opacity-40 font-normal">vs</span> {team2Name}
+              {team1Name} <span className="opacity-40 font-normal">{t("vs")}</span> {team2Name}
             </h1>
           </div>
-          <button onClick={() => setConfirmReset(true)} className="text-[11px] uppercase tracking-wide opacity-60 underline shrink-0 ml-2">
-            сброс
-          </button>
+          <div className="flex items-center gap-2 shrink-0 ml-2">
+            <LangSwitcher compact />
+            <button onClick={() => setConfirmReset(true)} className="text-[11px] uppercase tracking-wide opacity-60 underline">
+              {t("reset")}
+            </button>
+          </div>
         </div>
 
         {confirmReset && (
           <div className="mb-4 p-3 rounded-md border-2 text-sm" style={{ borderColor: BAD, backgroundColor: "#fbe9e7" }}>
-            <div className="font-semibold mb-2">Стереть текущую партию (без сохранения в историю)?</div>
+            <div className="font-semibold mb-2">{t("confirm_reset_title")}</div>
             <div className="flex gap-2">
               <button onClick={resetMatch} className="px-3 py-1.5 rounded text-white text-xs font-bold" style={{ backgroundColor: BAD }}>
-                Да, стереть
+                {t("yes_erase")}
               </button>
               <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 rounded text-xs font-bold border-2" style={{ borderColor: BORDER }}>
-                Отмена
+                {t("cancel")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {jackOutPrompt && (
+          <div className="mb-4 p-3 rounded-md border-2 text-sm" style={{ borderColor: PINE, backgroundColor: "#dfe6df" }}>
+            <div className="font-semibold mb-1">{t("jack_out_title")}</div>
+            <div className="text-xs opacity-70 mb-2">{t("jack_out_hint")}</div>
+            <div className="flex gap-2">
+              <button onClick={confirmJackOut} className="px-3 py-1.5 rounded text-white text-xs font-bold" style={{ backgroundColor: PINE }}>
+                {t("yes_annul")}
+              </button>
+              <button onClick={declineJackOut} className="px-3 py-1.5 rounded text-xs font-bold border-2" style={{ borderColor: BORDER }}>
+                {t("no_stayed")}
               </button>
             </div>
           </div>
@@ -241,15 +301,13 @@ export default function App() {
 
         {thirteenPrompt && (
           <div className="mb-4 p-3 rounded-md border-2 text-sm" style={{ borderColor: PINE, backgroundColor: "#dfe6df" }}>
-            <div className="font-semibold mb-2">
-              Счёт {thirteenPrompt.team1}:{thirteenPrompt.team2} — похоже, партия завершена. Закончить партию?
-            </div>
+            <div className="font-semibold mb-2">{t("thirteen_prompt", { t1: thirteenPrompt.team1, t2: thirteenPrompt.team2 })}</div>
             <div className="flex gap-2">
               <button onClick={finalizeMatch} className="px-3 py-1.5 rounded text-white text-xs font-bold" style={{ backgroundColor: PINE }}>
-                Да, закончить партию
+                {t("yes_end_match")}
               </button>
               <button onClick={() => setThirteenPrompt(null)} className="px-3 py-1.5 rounded text-xs font-bold border-2" style={{ borderColor: BORDER }}>
-                Ещё нет
+                {t("not_yet")}
               </button>
             </div>
           </div>
@@ -257,13 +315,13 @@ export default function App() {
 
         {confirmEndMatch && (
           <div className="mb-4 p-3 rounded-md border-2 text-sm" style={{ borderColor: PINE, backgroundColor: "#dfe6df" }}>
-            <div className="font-semibold mb-2">Закончить партию сейчас и сохранить в историю?</div>
+            <div className="font-semibold mb-2">{t("confirm_end_match_title")}</div>
             <div className="flex gap-2">
               <button onClick={finalizeMatch} className="px-3 py-1.5 rounded text-white text-xs font-bold" style={{ backgroundColor: PINE }}>
-                Да, закончить
+                {t("yes_end")}
               </button>
               <button onClick={() => setConfirmEndMatch(false)} className="px-3 py-1.5 rounded text-xs font-bold border-2" style={{ borderColor: BORDER }}>
-                Отмена
+                {t("cancel")}
               </button>
             </div>
           </div>
@@ -301,7 +359,7 @@ export default function App() {
 
         {tab === "stats" && <StatsPanel match={match} throws={throws} gameScores={gameScores} />}
 
-        {tab === "history" && <HistoryPanel history={history} onShare={shareRecord} onDelete={deleteHistoryRecord} />}
+        {tab === "history" && <HistoryPanel history={history} onShare={shareRecord} onDelete={deleteHistoryRecord} onImportMatch={importMatchRecord} />}
       </div>
 
       <Footer />
@@ -310,18 +368,26 @@ export default function App() {
         <div className="max-w-md mx-auto grid grid-cols-3">
           <button onClick={() => setTab("log")} className="flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold" style={{ color: tab === "log" ? PINE : "#8a8375" }}>
             <ClipboardList size={18} />
-            Запись
+            {t("tab_log")}
           </button>
           <button onClick={() => setTab("stats")} className="flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold" style={{ color: tab === "stats" ? PINE : "#8a8375" }}>
             <BarChart3 size={18} />
-            Статистика
+            {t("tab_stats")}
           </button>
           <button onClick={() => setTab("history")} className="flex flex-col items-center gap-0.5 py-2.5 text-xs font-bold" style={{ color: tab === "history" ? PINE : "#8a8375" }}>
             <History size={18} />
-            История
+            {t("tab_history")}
           </button>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <LangProvider>
+      <AppInner />
+    </LangProvider>
   );
 }
