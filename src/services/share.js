@@ -27,31 +27,33 @@ export function buildShareText(record) {
 
   const line = (p) => {
     const s = calcPlayerStats(throwsList, p);
-    return `  ${p} — ${t("tir")}: ${pct(s.tirSuccess, s.tirTotal)} (${s.tirSuccess}/${s.tirTotal}, ${t("carreau")} ${pct(s.carreau, s.tirTotal)}) · ${t("point")}: ${pct(
+    let str = `  ${p} — ${t("tir")}: ${pct(s.tirSuccess, s.tirTotal)} (${s.tirSuccess}/${s.tirTotal}, ${t("carreau")} ${pct(s.carreau, s.tirTotal)}) · ${t("point")}: ${pct(
       s.pointSuccess,
       s.pointTotal
     )} (${s.pointSuccess}/${s.pointTotal})`;
+    if (s.tirAuButTotal > 0) {
+      str += ` · ${t("stat_tir_au_but")}: ${pct(s.tirAuButSuccess, s.tirAuButTotal)} (${s.tirAuButSuccess}/${s.tirAuButTotal})`;
+    }
+    return str;
   };
 
   const t1Total = sumStats(t1Players.map((p) => calcPlayerStats(throwsList, p)));
   const t2Total = sumStats(t2Players.map((p) => calcPlayerStats(throwsList, p)));
 
-  const t1AllThrows = t1Total.tirTotal + t1Total.pointTotal;
-  const t2AllThrows = t2Total.tirTotal + t2Total.pointTotal;
-
   const formatLabel = record.format && FORMATS[record.format] ? t(FORMATS[record.format].labelKey) : "";
+
+  // Показываем количество бросков КАЖДОГО типа отдельно — без этого проценты не на что опереться.
+  const teamLine = (name, s) =>
+    `«${name}» — ${t("tir")}: ${s.tirTotal} (${pct(s.tirSuccess, s.tirTotal)}, ${t("carreau")} ${pct(s.carreau, s.tirTotal)}) · ${t("point")}: ${s.pointTotal} (${pct(
+      s.pointSuccess,
+      s.pointTotal
+    )})${s.tirAuButTotal > 0 ? ` · ${t("stat_tir_au_but")}: ${s.tirAuButTotal} (${pct(s.tirAuButSuccess, s.tirAuButTotal)})` : ""}`;
 
   let text = `${record.event || t("share_default_match")} · ${formatLabel}\n`;
   text += `${t1Name} ${record.finalTeam1Score ?? 0} : ${record.finalTeam2Score ?? 0} ${t2Name}\n\n`;
-  text += `«${t1Name}» — ${t("share_total_throws")}: ${t1AllThrows} · ${t("tir")}: ${pct(t1Total.tirSuccess, t1Total.tirTotal)} (${t("carreau")} ${pct(
-    t1Total.carreau,
-    t1Total.tirTotal
-  )}), ${t("point")}: ${pct(t1Total.pointSuccess, t1Total.pointTotal)}\n`;
+  text += teamLine(t1Name, t1Total) + "\n";
   t1Players.forEach((p) => (text += line(p) + "\n"));
-  text += `\n«${t2Name}» — ${t("share_total_throws")}: ${t2AllThrows} · ${t("tir")}: ${pct(t2Total.tirSuccess, t2Total.tirTotal)} (${t("carreau")} ${pct(
-    t2Total.carreau,
-    t2Total.tirTotal
-  )}), ${t("point")}: ${pct(t2Total.pointSuccess, t2Total.pointTotal)}\n`;
+  text += `\n` + teamLine(t2Name, t2Total) + "\n";
   t2Players.forEach((p) => (text += line(p) + "\n"));
 
   return text.trim();
