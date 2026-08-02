@@ -1,17 +1,18 @@
 import React, { useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { CARD } from "../constants";
+import { CARD, DIST_ZONES } from "../constants";
 import { pct, calcPlayerStats, sumStats, calcDistanceZones } from "../utils/stats";
-import { DIST_ZONES } from "../constants";
+import { useLang } from "../i18n/LangContext";
 import PlayerCard from "./PlayerCard";
 import ThrowGrid from "./ThrowGrid";
 
 export default function StatsBlock({ title, players, throws, gameScores, teamTag, accent }) {
+  const { t } = useLang();
   const [gridMode, setGridMode] = useState(null); // null | 'team' | <playerName>
   const teamRows = players.map((p) => ({ name: p, s: calcPlayerStats(throws, p) }));
   const total = sumStats(teamRows.map((r) => r.s));
   const zones = calcDistanceZones(throws, teamTag);
-  const teamThrows = throws.filter((t) => t.team === teamTag);
+  const teamThrows = throws.filter((tw) => tw.team === teamTag);
 
   return (
     <div className="mb-6">
@@ -25,7 +26,7 @@ export default function StatsBlock({ title, players, throws, gameScores, teamTag
       </button>
       {gridMode === "team" && <ThrowGrid throws={teamThrows} allThrows={throws} gameScores={gameScores} />}
       <div className="space-y-2 mb-3">
-        <PlayerCard name="Итого" s={total} bold accent={accent} />
+        <PlayerCard name={t("total")} s={total} bold accent={accent} />
         {teamRows.map((r) => (
           <React.Fragment key={r.name}>
             <PlayerCard
@@ -36,24 +37,24 @@ export default function StatsBlock({ title, players, throws, gameScores, teamTag
               active={gridMode === r.name}
               onClick={() => setGridMode(gridMode === r.name ? null : r.name)}
             />
-            {gridMode === r.name && <ThrowGrid throws={throws.filter((t) => t.player === r.name)} allThrows={throws} gameScores={gameScores} />}
+            {gridMode === r.name && <ThrowGrid throws={throws.filter((tw) => tw.player === r.name)} allThrows={throws} gameScores={gameScores} />}
           </React.Fragment>
         ))}
       </div>
-      <div className="text-[11px] font-semibold uppercase tracking-wide mb-1.5 opacity-60">По дистанции</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wide mb-1.5 opacity-60">{t("by_distance")}</div>
       <div className="grid grid-cols-3 gap-2">
         {DIST_ZONES.map((z) => {
           const pt = zones.point[z.key];
           const tr = zones.tir[z.key];
           return (
             <div key={z.key} className="rounded-lg p-2 text-center" style={{ backgroundColor: CARD }}>
-              <div className="text-[10px] font-bold uppercase">{z.label}</div>
-              <div className="text-[9px] opacity-50 mb-1">{z.hint}</div>
+              <div className="text-[10px] font-bold uppercase">{t(z.labelKey)}</div>
+              <div className="text-[9px] opacity-50 mb-1">{t(z.hintKey)}</div>
               <div className="text-[10px]">
-                П: <span className="font-black">{pct(pt.success, pt.total)}</span>
+                {t("letter_point")}: <span className="font-black">{pct(pt.success, pt.total)}</span>
               </div>
               <div className="text-[10px]">
-                Т: <span className="font-black">{pct(tr.success, tr.total)}</span>
+                {t("letter_tir")}: <span className="font-black">{pct(tr.success, tr.total)}</span>
               </div>
             </div>
           );
