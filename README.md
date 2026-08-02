@@ -1,16 +1,40 @@
-# React + Vite
+# Petanque Stats
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+An app for tracking petanque match statistics live during the game: points, shots, carreaux, shots at the jack (tir au but), throw distance — plus a detailed breakdown per player and per end after the match.
 
-Currently, two official plugins are available:
+Built for our own team's use, and open to anyone who wants an easier way to track stats than pen and paper.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Features
 
-## React Compiler
+- Log throws as the match happens: team → player → throw type (point/shot) → result
+- Dedicated tracking for shots at the jack, with a check for whether the jack got knocked out of bounds
+- Throw distance split into three zones (short/medium/long)
+- Full per-player stats: shot %, carreau %, point %, first-point %
+- A visual throw grid broken down by end
+- Match history with full stats available for any past game
+- Backups: a full backup of everything, or a single match as its own file — which you can share with another player without losing your own saved matches
+- Interface languages: русский, français, English
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## How it's built
 
-## Expanding the Oxlint configuration
+The app is written in React and packaged into a native Android app via [Capacitor](https://capacitorjs.com/). Data is stored locally on the device — no server, no account required.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+```
+src/
+  constants.js       — colors, game formats, distance zones
+  i18n/               — interface translations (ru/fr/en)
+  utils/              — pure stats math and match setup helpers
+  services/           — storage, export/import, share text
+  components/         — reusable UI blocks
+  screens/            — the logging screen and the match setup screen
+```
+
+`services/storage.js` is the only file that talks to storage. That's intentional: when stats move to a server for shared team analysis, only this file needs to change.
+
+## Build
+
+The APK is built automatically via GitHub Actions on every push — see `.github/workflows/`. Builds are available under [Releases](../../releases) / [Actions](../../actions).
+
+## Status
+
+The project is in beta. Feedback and issues are welcome.
