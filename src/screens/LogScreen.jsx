@@ -1,5 +1,5 @@
 import { RotateCcw, X } from "lucide-react";
-import { PINE, PINE_DARK, BRONZE, GOOD, BAD, YELLOW, CARD, BORDER, INK } from "../constants";
+import { FORMATS, PINE, PINE_DARK, BRONZE, GOOD, BAD, YELLOW, CARD, BORDER, INK } from "../constants";
 import { useLang } from "../i18n/LangContext";
 
 export default function LogScreen({
@@ -30,6 +30,8 @@ export default function LogScreen({
   setConfirmEndMatch,
 }) {
   const { t } = useLang();
+  const cfg = FORMATS[match.format];
+  const teamColor = selTeam === "team2" ? BRONZE : PINE;
 
   return (
     <>
@@ -74,23 +76,55 @@ export default function LogScreen({
           <div className="grid grid-cols-2 gap-2 mb-3">
             <div>
               <div className="text-[10px] uppercase tracking-wide opacity-60 truncate">{team1Name}</div>
-              <input
-                type="number"
-                value={endGeimScores.team1}
-                onChange={(e) => setEndGeimScores({ ...endGeimScores, team1: e.target.value })}
-                className="w-full px-2 py-1.5 rounded border text-lg font-black text-center"
-                style={{ borderColor: BORDER }}
-              />
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <button
+                  onClick={() => setEndGeimScores({ ...endGeimScores, team1: Math.max(0, (parseInt(endGeimScores.team1) || 0) - 1) })}
+                  className="w-8 h-8 shrink-0 rounded-md border-2 font-bold"
+                  style={{ borderColor: BORDER }}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  value={endGeimScores.team1}
+                  onChange={(e) => setEndGeimScores({ ...endGeimScores, team1: e.target.value })}
+                  className="w-full px-2 py-1.5 rounded border text-lg font-black text-center"
+                  style={{ borderColor: BORDER }}
+                />
+                <button
+                  onClick={() => setEndGeimScores({ ...endGeimScores, team1: (parseInt(endGeimScores.team1) || 0) + 1 })}
+                  className="w-8 h-8 shrink-0 rounded-md font-bold text-white"
+                  style={{ backgroundColor: PINE }}
+                >
+                  +1
+                </button>
+              </div>
             </div>
             <div>
               <div className="text-[10px] uppercase tracking-wide opacity-60 truncate">{team2Name}</div>
-              <input
-                type="number"
-                value={endGeimScores.team2}
-                onChange={(e) => setEndGeimScores({ ...endGeimScores, team2: e.target.value })}
-                className="w-full px-2 py-1.5 rounded border text-lg font-black text-center"
-                style={{ borderColor: BORDER }}
-              />
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <button
+                  onClick={() => setEndGeimScores({ ...endGeimScores, team2: Math.max(0, (parseInt(endGeimScores.team2) || 0) - 1) })}
+                  className="w-8 h-8 shrink-0 rounded-md border-2 font-bold"
+                  style={{ borderColor: BORDER }}
+                >
+                  −
+                </button>
+                <input
+                  type="number"
+                  value={endGeimScores.team2}
+                  onChange={(e) => setEndGeimScores({ ...endGeimScores, team2: e.target.value })}
+                  className="w-full px-2 py-1.5 rounded border text-lg font-black text-center"
+                  style={{ borderColor: BORDER }}
+                />
+                <button
+                  onClick={() => setEndGeimScores({ ...endGeimScores, team2: (parseInt(endGeimScores.team2) || 0) + 1 })}
+                  className="w-8 h-8 shrink-0 rounded-md font-bold text-white"
+                  style={{ backgroundColor: BRONZE }}
+                >
+                  +1
+                </button>
+              </div>
             </div>
           </div>
           <div className="flex gap-2">
@@ -149,24 +183,40 @@ export default function LogScreen({
             <div className="text-xs italic opacity-50 px-1">{t("all_balls_used")}</div>
           ) : (
             <div className="grid grid-cols-1 gap-2">
-              {teamPlayers.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => {
-                    setSelPlayer(p);
-                    setSelType(null);
-                    setSelTirAuBut(false);
-                  }}
-                  className="py-2.5 px-3 rounded-md font-semibold text-sm border-2 text-left"
-                  style={{
-                    borderColor: selPlayer === p ? PINE_DARK : BORDER,
-                    backgroundColor: selPlayer === p ? "#dfe6df" : "white",
-                    color: INK,
-                  }}
-                >
-                  {p}
-                </button>
-              ))}
+              {teamPlayers.map((p) => {
+                const used = throws.filter((tw) => tw.player === p && tw.geim === geimState.geim).length;
+                const remaining = cfg.balls - used;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => {
+                      setSelPlayer(p);
+                      setSelType(null);
+                      setSelTirAuBut(false);
+                    }}
+                    className="py-2.5 px-3 rounded-md font-semibold text-sm border-2 flex items-center justify-between gap-2"
+                    style={{
+                      borderColor: selPlayer === p ? PINE_DARK : BORDER,
+                      backgroundColor: selPlayer === p ? "#dfe6df" : "white",
+                      color: INK,
+                    }}
+                  >
+                    <span className="truncate text-left">{p}</span>
+                    <span className="flex gap-1 shrink-0">
+                      {Array.from({ length: cfg.balls }).map((_, i) => (
+                        <span
+                          key={i}
+                          className="w-2.5 h-2.5 rounded-full shrink-0"
+                          style={{
+                            backgroundColor: i < remaining ? teamColor : "transparent",
+                            border: `1.5px solid ${teamColor}`,
+                          }}
+                        />
+                      ))}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
