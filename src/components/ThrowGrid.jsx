@@ -4,9 +4,14 @@ import { useLang } from "../i18n/LangContext";
 
 // Сетка бросков: колонка = один бросок в хронологическом порядке.
 // Пойнт и тир — в отдельных строках; пустая ячейка помечена буквой своей строки.
-export default function ThrowGrid({ throws, allThrows, gameScores }) {
+// Для аннулированных геймов (кошонет выбит в аут) достраиваем пустые клетки на
+// несыгранные шары — игрок вышел в гейм, но не успел сыграть все свои шары.
+export default function ThrowGrid({ throws, allThrows, gameScores, expectedBalls }) {
   const { t } = useLang();
-  const geims = [...new Set(throws.map((t) => t.geim))].sort((a, b) => a - b);
+  const voidedGeims = new Set((gameScores || []).filter((s) => s.voided).map((s) => s.geim));
+  const throwGeims = allThrows.map((tw) => tw.geim);
+  const scoreGeims = (gameScores || []).map((s) => s.geim);
+  const geims = [...new Set([...throwGeims, ...scoreGeims])].sort((a, b) => a - b);
 
   if (geims.length === 0) {
     return <div className="text-xs italic opacity-50 px-2 py-3">{t("no_throws")}</div>;
@@ -23,7 +28,10 @@ export default function ThrowGrid({ throws, allThrows, gameScores }) {
     <div className="mb-3 rounded-lg p-2 overflow-x-auto" style={{ backgroundColor: CARD }}>
       <div className="inline-flex gap-3">
         {geims.map((g) => {
-          const geimThrows = throws.filter((tw) => tw.geim === g);
+          let geimThrows = throws.filter((tw) => tw.geim === g);
+          if (voidedGeims.has(g) && expectedBalls && geimThrows.length < expectedBalls) {
+            geimThrows = [...geimThrows, ...Array(expectedBalls - geimThrows.length).fill(null)];
+          }
           const firstOfGeim = allThrows.find((tw) => tw.geim === g);
           const dist = firstOfGeim && firstOfGeim.distance ? `${firstOfGeim.distance}${t("unit_m")}` : "—";
           const score = startScoreFor(g, gameScores);
@@ -35,6 +43,10 @@ export default function ThrowGrid({ throws, allThrows, gameScores }) {
               <div className="flex flex-col gap-1">
                 <div className="flex gap-1">
                   {geimThrows.map((tw, i) => {
+                    if (!tw)
+                      return (
+                        <div key={i} className="w-4 h-4 rounded-sm" style={{ border: `1px dashed ${BORDER}`, opacity: 0.5 }} />
+                      );
                     const c = tw.type === "point" ? cellColor(tw) : null;
                     return (
                       <div
@@ -49,6 +61,10 @@ export default function ThrowGrid({ throws, allThrows, gameScores }) {
                 </div>
                 <div className="flex gap-1">
                   {geimThrows.map((tw, i) => {
+                    if (!tw)
+                      return (
+                        <div key={i} className="w-4 h-4 rounded-sm" style={{ border: `1px dashed ${BORDER}`, opacity: 0.5 }} />
+                      );
                     const c = tw.type === "tir" ? cellColor(tw) : null;
                     return (
                       <div

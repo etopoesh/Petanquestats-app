@@ -6,13 +6,14 @@ import { useLang } from "../i18n/LangContext";
 import PlayerCard from "./PlayerCard";
 import ThrowGrid from "./ThrowGrid";
 
-export default function StatsBlock({ title, players, throws, gameScores, teamTag, accent }) {
+export default function StatsBlock({ title, players, throws, gameScores, teamTag, accent, ballsPerPlayer }) {
   const { t } = useLang();
   const [gridMode, setGridMode] = useState(null); // null | 'team' | <playerName>
   const teamRows = players.map((p) => ({ name: p, s: calcPlayerStats(throws, p) }));
   const total = sumStats(teamRows.map((r) => r.s));
   const zones = calcDistanceZones(throws, teamTag);
   const teamThrows = throws.filter((tw) => tw.team === teamTag);
+  const teamExpected = ballsPerPlayer ? ballsPerPlayer * players.length : null;
 
   return (
     <div className="mb-6">
@@ -24,7 +25,7 @@ export default function StatsBlock({ title, players, throws, gameScores, teamTag
         {title}
         {gridMode === "team" ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
       </button>
-      {gridMode === "team" && <ThrowGrid throws={teamThrows} allThrows={throws} gameScores={gameScores} />}
+      {gridMode === "team" && <ThrowGrid throws={teamThrows} allThrows={throws} gameScores={gameScores} expectedBalls={teamExpected} />}
       <div className="space-y-2 mb-3">
         <PlayerCard name={t("total")} s={total} bold accent={accent} />
         {teamRows.map((r) => (
@@ -37,7 +38,9 @@ export default function StatsBlock({ title, players, throws, gameScores, teamTag
               active={gridMode === r.name}
               onClick={() => setGridMode(gridMode === r.name ? null : r.name)}
             />
-            {gridMode === r.name && <ThrowGrid throws={throws.filter((tw) => tw.player === r.name)} allThrows={throws} gameScores={gameScores} />}
+            {gridMode === r.name && (
+              <ThrowGrid throws={throws.filter((tw) => tw.player === r.name)} allThrows={throws} gameScores={gameScores} expectedBalls={ballsPerPlayer} />
+            )}
           </React.Fragment>
         ))}
       </div>
