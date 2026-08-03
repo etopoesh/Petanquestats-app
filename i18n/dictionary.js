@@ -52,10 +52,6 @@ export const translations = {
     letter_tir: "т",
     unit_m: "м",
 
-    jack_out_title: "Кошонет выбит — аннулировать гейм?",
-    jack_out_hint: "Если кошонет ушёл за пределы площадки, гейм аннулируется и переигрывается заново.",
-    yes_annul: "Да, аннулировать",
-    no_stayed: "Нет, остался в игре",
 
     history_title: "История партий",
     history_empty: "История партий пуста",
@@ -171,10 +167,6 @@ export const translations = {
     letter_tir: "t",
     unit_m: "m",
 
-    jack_out_title: "Le cochonnet est sorti — annuler la mène ?",
-    jack_out_hint: "Si le cochonnet est sorti du terrain, la mène est annulée et se rejoue.",
-    yes_annul: "Oui, annuler",
-    no_stayed: "Non, il est resté en jeu",
 
     history_title: "Historique des parties",
     history_empty: "Aucune partie enregistrée",
@@ -290,10 +282,6 @@ export const translations = {
     letter_tir: "s",
     unit_m: "m",
 
-    jack_out_title: "The jack was knocked out — void this end?",
-    jack_out_hint: "If the jack left the court, the end is voided and replayed from scratch.",
-    yes_annul: "Yes, void it",
-    no_stayed: "No, it stayed in",
 
     history_title: "Match history",
     history_empty: "No matches saved yet",
