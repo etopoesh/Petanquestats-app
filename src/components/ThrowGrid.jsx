@@ -4,13 +4,14 @@ import { useLang } from "../i18n/LangContext";
 
 // Сетка бросков: колонка = один бросок в хронологическом порядке.
 // Пойнт и тир — в отдельных строках; пустая ячейка помечена буквой своей строки.
-// Для аннулированных геймов (кошонет выбит в аут) достраиваем пустые клетки на
-// несыгранные шары — игрок вышел в гейм, но не успел сыграть все свои шары.
+// Если гейм закончили раньше, чем разыграли все шары (например, набрали нужный счёт
+// не полным составом), достраиваем пустые пунктирные клетки на несыгранные шары —
+// игрок вышел в гейм, но не успел сыграть его до конца.
 export default function ThrowGrid({ throws, allThrows, gameScores, expectedBalls }) {
   const { t } = useLang();
-  const voidedGeims = new Set((gameScores || []).filter((s) => s.voided).map((s) => s.geim));
-  const throwGeims = allThrows.map((tw) => tw.geim);
   const scoreGeims = (gameScores || []).map((s) => s.geim);
+  const finishedGeims = new Set(scoreGeims);
+  const throwGeims = allThrows.map((tw) => tw.geim);
   const geims = [...new Set([...throwGeims, ...scoreGeims])].sort((a, b) => a - b);
 
   if (geims.length === 0) {
@@ -29,7 +30,7 @@ export default function ThrowGrid({ throws, allThrows, gameScores, expectedBalls
       <div className="inline-flex gap-3">
         {geims.map((g) => {
           let geimThrows = throws.filter((tw) => tw.geim === g);
-          if (voidedGeims.has(g) && expectedBalls && geimThrows.length < expectedBalls) {
+          if (finishedGeims.has(g) && expectedBalls && geimThrows.length < expectedBalls) {
             geimThrows = [...geimThrows, ...Array(expectedBalls - geimThrows.length).fill(null)];
           }
           const firstOfGeim = allThrows.find((tw) => tw.geim === g);

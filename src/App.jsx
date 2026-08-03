@@ -34,7 +34,6 @@ function AppInner() {
   const [endGeimScores, setEndGeimScores] = useState({ team1: 0, team2: 0 });
   const [thirteenPrompt, setThirteenPrompt] = useState(null);
   const [confirmEndMatch, setConfirmEndMatch] = useState(false);
-  const [jackOutPrompt, setJackOutPrompt] = useState(false);
   const saveTimer = useRef(null);
 
   useEffect(() => {
@@ -104,33 +103,11 @@ function AppInner() {
     if (usedNow >= cfg.balls) setSelPlayer(null);
   };
 
-  // Попадание тира по кошонету — сперва спрашиваем, не выбило ли кошонет в аут
-  // (в этом случае гейм аннулируется и переигрывается).
+  // Простая логика: любой бросок, включая удар по кошонету, просто засчитывается.
+  // Решение заканчивать ли гейм — целиком на пользователе через кнопку «Конец гейма».
   const logThrow = (result) => {
     if (!selTeam || !selPlayer || !selType) return;
-    if (selType === "tir" && selTirAuBut && result === "hit") {
-      setJackOutPrompt(true);
-      return;
-    }
     commitThrow(result);
-  };
-
-  const confirmJackOut = () => {
-    // Аннулировать гейм: убираем все броски текущего гейма, номер гейма и счёт не меняются,
-    // дистанция сбрасывается — кошонет будет брошен заново.
-    const next = throws.filter((tw) => tw.geim !== geimState.geim);
-    setThrows(next);
-    const nextGeim = { ...geimState, distance: "" };
-    setGeimState(nextGeim);
-    persistCurrent(match, nextGeim, next, gameScores);
-    setJackOutPrompt(false);
-    setSelType(null);
-    setSelTirAuBut(false);
-  };
-
-  const declineJackOut = () => {
-    commitThrow("hit", { cochonnetOut: false });
-    setJackOutPrompt(false);
   };
 
   const undoLast = () => {
@@ -155,7 +132,7 @@ function AppInner() {
     const t2 = parseInt(endGeimScores.team2) || 0;
     const scoreEntry = { geim: geimState.geim, team1Score: t1, team2Score: t2 };
     const nextScores = [...gameScores, scoreEntry];
-    const nextGeimState = { ...geimState, geim: geimState.geim + 1, team1Score: t1, team2Score: t2 };
+    const nextGeimState = { ...geimState, geim: geimState.geim + 1, team1Score: t1, team2Score: t2, distance: "" };
     setGameScores(nextScores);
     setGeimState(nextGeimState);
     persistCurrent(match, nextGeimState, throws, nextScores);
@@ -164,6 +141,7 @@ function AppInner() {
     setSelPlayer(null);
     setSelType(null);
     setSelTirAuBut(false);
+    setGeimWasVoided(false);
     if (t1 >= 13 || t2 >= 13) setThirteenPrompt({ team1: t1, team2: t2 });
   };
 
@@ -279,21 +257,6 @@ function AppInner() {
               </button>
               <button onClick={() => setConfirmReset(false)} className="px-3 py-1.5 rounded text-xs font-bold border-2" style={{ borderColor: BORDER }}>
                 {t("cancel")}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {jackOutPrompt && (
-          <div className="mb-4 p-3 rounded-md border-2 text-sm" style={{ borderColor: PINE, backgroundColor: "#dfe6df" }}>
-            <div className="font-semibold mb-1">{t("jack_out_title")}</div>
-            <div className="text-xs opacity-70 mb-2">{t("jack_out_hint")}</div>
-            <div className="flex gap-2">
-              <button onClick={confirmJackOut} className="px-3 py-1.5 rounded text-white text-xs font-bold" style={{ backgroundColor: PINE }}>
-                {t("yes_annul")}
-              </button>
-              <button onClick={declineJackOut} className="px-3 py-1.5 rounded text-xs font-bold border-2" style={{ borderColor: BORDER }}>
-                {t("no_stayed")}
               </button>
             </div>
           </div>
