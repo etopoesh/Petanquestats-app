@@ -37,4 +37,4 @@ The APK is built automatically via GitHub Actions on every push — see `.github
 
 ## Status
 
-The project is in beta. Feedback and issues are welcome.
+The project is in beta 1.1. Feedback and issues are welcome.
